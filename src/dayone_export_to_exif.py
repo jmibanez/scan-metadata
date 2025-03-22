@@ -17,13 +17,17 @@ class MetadataEntry(object):
         self.location = location
         self.tags = tags
 
-    def write_to_exif(self, filepath: Path):
+    def write_to_exif(self, filepath: Path, overwrite_original: bool = False):
         tag_args = {
             "-Keywords+=": self.tags,
             "-DateTimeOriginal=": self.munge_date_with_framecount(),
         }
         self.populate_location_args(tag_args)
         args = ["exiftool"]
+
+        if overwrite_original:
+            args.append("-overwrite_original_in_place")
+
         for k, v in tag_args.items():
             if isinstance(v, list):
                 for i in v:
@@ -76,7 +80,7 @@ def read_entries(json_dict):
     metadata_entries = [ extract_metadata_from_entry(e) for e in json_entries ]
     return metadata_entries
 
-def match_files_to_entries(scan_dir: str, prefix: str, metadata_entries: List[MetadataEntry]):
+def match_files_to_entries(scan_dir: str, prefix: str, metadata_entries: List[MetadataEntry], overwrite: bool):
     # Expect (prefix)_(\d\d\d\d)
     p = Path(scan_dir)
     scans_to_apply = p.glob(f"{prefix}_*.tif")
@@ -92,7 +96,7 @@ def match_files_to_entries(scan_dir: str, prefix: str, metadata_entries: List[Me
             continue
         frame_count = int(m.group(3))
         metadata_entry = metadata_map[frame_count]
-        metadata_entry.write_to_exif(s)
+        metadata_entry.write_to_exif(s, overwrite)
 
 def dayone_export_zip_to_json(f):
     with ZipFile(f) as z:
@@ -104,8 +108,9 @@ def dayone_export_to_exif():
     parser = ArgumentParser(
         description="Populate metadata for TIFF scans based on Day One journal entries",
     )
-    parser.add_argument("--scandir", default=".", required=False)
-    parser.add_argument("--prefix", required=True)
+    parser.add_argument("--scandir", "-s", default=".", required=False)
+    parser.add_argument("--inplace", "-i", action='store_true')
+    parser.add_argument("prefix")
     parser.add_argument("dayone_export_zipfile")
 
     ns = parser.parse_args()
@@ -113,10 +118,11 @@ def dayone_export_to_exif():
     scan_dir = ns.scandir
     prefix = ns.prefix
     dayone_export_zipfile = ns.dayone_export_zipfile
+    overwrite = ns.inplace
 
     json_dict = dayone_export_zip_to_json(dayone_export_zipfile)
     metadata_entries = read_entries(json_dict)
-    match_files_to_entries(scan_dir, prefix, metadata_entries)
+    match_files_to_entries(scan_dir, prefix, metadata_entries, overwrite)
 
 
 if __name__ == '__main__':
