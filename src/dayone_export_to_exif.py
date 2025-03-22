@@ -22,6 +22,7 @@ class MetadataEntry(object):
             "-Keywords+=": self.tags,
             "-DateTimeOriginal=": self.munge_date_with_framecount(),
         }
+        self.populate_location_args(tag_args)
         args = ["exiftool"]
         for k, v in tag_args.items():
             if isinstance(v, list):
@@ -38,6 +39,21 @@ class MetadataEntry(object):
         d = datetime.fromisoformat(date_string)
         munged_datetime = d.replace(second=int(self.frame_count))
         return munged_datetime
+
+    def populate_location_args(self, tag_args):
+        if not self.location:
+            return
+
+        if "region" in self.location:
+            loc_region = self.location["region"]
+            lat = loc_region["center"]["latitude"]
+            lon = loc_region["center"]["longitude"]
+            radius = loc_region["radius"]
+
+            tag_args["-GPSLatitude="] = tag_args["-GPSLatitudeRef="] = lat
+            tag_args["-GPSLongitude="] = tag_args["-GPSLongitudeRef="] = lon
+            tag_args["-GPSHPositioningError="] = radius
+
 
 def parse_frame_count(text):
     lines = text.split('\n')
