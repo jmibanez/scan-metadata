@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import pytz
+
 from argparse import ArgumentParser
 from datetime import datetime
 from json import loads as json_loads
@@ -43,7 +45,11 @@ class MetadataEntry(object):
         date_string = self.entry_date
         d = datetime.fromisoformat(date_string)
         munged_datetime = d.replace(second=int(self.frame_count))
-        return munged_datetime
+
+        tzname = self.location["timeZoneName"].replace("\\/", "/")
+        tz = pytz.timezone(tzname)
+
+        return munged_datetime.astimezone(tz)
 
     def populate_location_args(self, tag_args):
         if not self.location:
