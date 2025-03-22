@@ -65,7 +65,6 @@ class MetadataEntry(object):
             tag_args["GPSLongitude"] = tag_args["GPSLongitudeRef"] = lon
             tag_args["GPSHPositioningError"] = radius
 
-
 def parse_frame_count(text):
     lines = text.split('\n')
     header = lines[0]
@@ -89,7 +88,7 @@ def read_entries(json_dict):
 def match_files_to_entries(scan_dir: str, prefix: str, metadata_entries: List[MetadataEntry], overwrite: bool):
     # Expect (prefix)_(\d\d\d\d)
     p = Path(scan_dir)
-    scans_to_apply = p.glob(f"{prefix}_*.tif")
+    scans_to_apply = sorted(p.glob(f"{prefix}_*.tif"))
     metadata_map = {
         int(e.frame_count): e
         for e in metadata_entries
