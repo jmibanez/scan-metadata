@@ -19,8 +19,8 @@ class MetadataEntry(object):
 
     def write_to_exif(self, filepath: Path, overwrite_original: bool = False):
         tag_args = {
-            "-Keywords+=": self.tags,
-            "-DateTimeOriginal=": self.munge_date_with_framecount(),
+            "Keywords": self.tags,
+            "DateTimeOriginal": self.munge_date_with_framecount(),
         }
         self.populate_location_args(tag_args)
         args = ["exiftool"]
@@ -31,9 +31,9 @@ class MetadataEntry(object):
         for k, v in tag_args.items():
             if isinstance(v, list):
                 for i in v:
-                    args.append(f"{k}{i}")
+                    args.append(f"-{k}+={i}")
             else:
-                args.append(f"{k}{v}")
+                args.append(f"-{k}={v}")
 
         args.append(str(filepath))
         print(f"Updating tags for {str(filepath)}")
@@ -55,9 +55,9 @@ class MetadataEntry(object):
             lon = loc_region["center"]["longitude"]
             radius = loc_region["radius"]
 
-            tag_args["-GPSLatitude="] = tag_args["-GPSLatitudeRef="] = lat
-            tag_args["-GPSLongitude="] = tag_args["-GPSLongitudeRef="] = lon
-            tag_args["-GPSHPositioningError="] = radius
+            tag_args["GPSLatitude"] = tag_args["GPSLatitudeRef"] = lat
+            tag_args["GPSLongitude"] = tag_args["GPSLongitudeRef"] = lon
+            tag_args["GPSHPositioningError"] = radius
 
 
 def parse_frame_count(text):
