@@ -20,7 +20,7 @@ class MetadataEntry(object):
     def write_to_exif(self, filepath: Path):
         tag_args = {
             "-Keywords+=": self.tags,
-            "-CreateDate=": self.munge_date_with_framecount(),
+            "-DateTimeOriginal=": self.munge_date_with_framecount(),
         }
         args = ["exiftool"]
         for k, v in tag_args.items():
