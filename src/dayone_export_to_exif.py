@@ -32,6 +32,7 @@ class MetadataEntry(object):
                 args.append(f"{k}{v}")
 
         args.append(str(filepath))
+        print(f"Updating tags for {str(filepath)}")
         subprocess.run(args)
 
     def munge_date_with_framecount(self):
