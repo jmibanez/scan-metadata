@@ -28,7 +28,7 @@ class MetadataEntry(object):
         self.populate_location_tags()
         self.populate_from_entry_tags()
 
-    def write_to_exif(self, filepath: Path, overwrite_original: bool = False):
+    def get_exiftool_command_line(self, filepath: Path, overwrite_original: bool = False):
         args = ["exiftool"]
 
         if overwrite_original:
@@ -42,6 +42,10 @@ class MetadataEntry(object):
                 args.append(f"-{k}={v}")
 
         args.append(str(filepath))
+        return args
+
+    def write_to_exif(self, filepath: Path, overwrite_original: bool = False):
+        args = self.get_exiftool_command_line(filepath, overwrite_original)
         print(f"Updating tags for {str(filepath)}")
         subprocess.run(args)
 
@@ -144,8 +148,11 @@ def match_files_to_entries(
         if not dryrun:
             metadata_entry.write_to_exif(s, overwrite)
         else:
+            args = metadata_entry.get_exiftool_command_line(s, overwrite)
+            cmd = " ".join(args)
             print(f"Would have updated {str(s)}...")
-            print(f"\tTags: {metadata_entry.exif_tags}")
+            print(f"\t{cmd}")
+            print()
 
 def dayone_export_zip_to_json(f):
     with ZipFile(f) as z:
