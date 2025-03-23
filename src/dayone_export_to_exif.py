@@ -13,24 +13,27 @@ from zipfile import ZipFile
 from typing import List
 
 class MetadataEntry(object):
-    def __init__(self, frame_count, entry_date, location, tags):
+    def __init__(self, frame_count, entry_date, location, entry_tags):
         self.frame_count = frame_count
         self.entry_date = entry_date
         self.location = location
-        self.tags = tags
+        self.entry_tags = entry_tags
+
+        self.exif_tags = dict()
+        self.populate_tags()
+
+    def populate_tags(self):
+        self.add_exif_tag("Keywords", self.entry_tags)
+        self.add_exif_tag("DateTimeOriginal", self.munge_date_with_framecount())
+        self.populate_location_tags()
 
     def write_to_exif(self, filepath: Path, overwrite_original: bool = False):
-        tag_args = {
-            "Keywords": self.tags,
-            "DateTimeOriginal": self.munge_date_with_framecount(),
-        }
-        self.populate_location_args(tag_args)
         args = ["exiftool"]
 
         if overwrite_original:
             args.append("-overwrite_original_in_place")
 
-        for k, v in tag_args.items():
+        for k, v in self.exif_tags.items():
             if isinstance(v, list):
                 for i in v:
                     args.append(f"-{k}+={i}")
@@ -51,7 +54,7 @@ class MetadataEntry(object):
 
         return munged_datetime.astimezone(tz)
 
-    def populate_location_args(self, tag_args):
+    def populate_location_tags(self):
         if not self.location:
             return
 
@@ -61,9 +64,15 @@ class MetadataEntry(object):
             lon = loc_region["center"]["longitude"]
             radius = loc_region["radius"]
 
-            tag_args["GPSLatitude"] = tag_args["GPSLatitudeRef"] = lat
-            tag_args["GPSLongitude"] = tag_args["GPSLongitudeRef"] = lon
-            tag_args["GPSHPositioningError"] = radius
+            self.add_exif_tag("GPSLatitude", lat)
+            self.add_exif_tag("GPSLatitudeRef", lat)
+            self.add_exif_tag("GPSLongitude", lon)
+            self.add_exif_tag("GPSLongitudeRef", lon)
+            self.add_exif_tag("GPSHPositioningError", radius)
+
+    def add_exif_tag(self, name, value):
+        self.exif_tags[name] = value
+
 
 def parse_frame_count(text):
     lines = text.split('\n')
