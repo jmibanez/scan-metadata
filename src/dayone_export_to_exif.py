@@ -26,6 +26,7 @@ class MetadataEntry(object):
         self.add_exif_tag("Keywords", self.entry_tags)
         self.add_exif_tag("DateTimeOriginal", self.munge_date_with_framecount())
         self.populate_location_tags()
+        self.populate_from_entry_tags()
 
     def write_to_exif(self, filepath: Path, overwrite_original: bool = False):
         args = ["exiftool"]
@@ -70,8 +71,28 @@ class MetadataEntry(object):
             self.add_exif_tag("GPSLongitudeRef", lon)
             self.add_exif_tag("GPSHPositioningError", radius)
 
+
+    def populate_from_entry_tags(self):
+        aperture_tag = next(filter(_is_aperture_tag, self.entry_tags), None)
+        shutter_tag = next(filter(_is_shutter_tag, self.entry_tags), None)
+        if shutter_tag:
+            if shutter_tag != 'APs':
+                shutter_speed = shutter_tag[:-1]
+                self.add_exif_tag("ShutterSpeedValue", shutter_speed)
+        if aperture_tag:
+            aperture = aperture_tag[2:]
+            self.add_exif_tag("ApertureValue", aperture)
+
     def add_exif_tag(self, name, value):
         self.exif_tags[name] = value
+
+
+def _is_aperture_tag(tag):
+    return tag[0:2] == "f/"
+
+_SHUTTER_TAG_MATCHER = re.compile("(1/)?\\d+s")
+def _is_shutter_tag(tag):
+    return _SHUTTER_TAG_MATCHER.match(tag)
 
 
 def parse_frame_count(text):
