@@ -50,8 +50,12 @@ class MetadataEntry(object):
         d = datetime.fromisoformat(date_string)
         munged_datetime = d.replace(second=int(self.frame_count))
 
-        tzname = self.location["timeZoneName"].replace("\\/", "/")
-        tz = pytz.timezone(tzname)
+        if self.location and "timeZoneName" in self.location:
+            tzname = self.location["timeZoneName"].replace("\\/", "/")
+            tz = pytz.timezone(tzname)
+        else:
+            print(f"Warning: Frame {self.frame_count} does not have TZ info, using current local TZ")
+            tz = datetime.now().astimezone().tzinfo
 
         return munged_datetime.astimezone(tz)
 
