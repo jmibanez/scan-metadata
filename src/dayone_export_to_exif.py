@@ -144,6 +144,8 @@ def match_files_to_entries(
         if not m:
             continue
         frame_count = int(m.group(3))
+        if frame_count not in metadata_map:
+            continue
         metadata_entry = metadata_map[frame_count]
         if not dryrun:
             metadata_entry.write_to_exif(s, overwrite)
