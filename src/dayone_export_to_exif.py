@@ -87,9 +87,16 @@ class MetadataEntry(object):
             if shutter_tag != 'APs':
                 shutter_speed = shutter_tag[:-1]
                 self.add_exif_tag("ShutterSpeedValue", shutter_speed)
+            self.entry_tags.remove(shutter_tag)
         if aperture_tag:
             aperture = aperture_tag[2:]
             self.add_exif_tag("ApertureValue", aperture)
+            self.entry_tags.remove(aperture_tag)
+
+        if "unindexed" in self.entry_tags:
+            self.entry_tags.remove("unindexed")
+        if "scanned"  in self.entry_tags:
+            self.entry_tags.remove("scanned")
 
     def add_exif_tag(self, name, value):
         self.exif_tags[name] = value
