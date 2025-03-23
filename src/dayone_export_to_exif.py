@@ -115,7 +115,13 @@ def read_entries(json_dict):
     metadata_entries = [ extract_metadata_from_entry(e) for e in json_entries ]
     return metadata_entries
 
-def match_files_to_entries(scan_dir: str, prefix: str, metadata_entries: List[MetadataEntry], overwrite: bool):
+def match_files_to_entries(
+    scan_dir: str,
+    prefix: str,
+    metadata_entries: List[MetadataEntry],
+    overwrite: bool,
+    dryrun: bool,
+):
     # Expect (prefix)_(\d\d\d\d)
     p = Path(scan_dir)
     scans_to_apply = sorted(p.glob(f"{prefix}_*.tif"))
@@ -131,7 +137,11 @@ def match_files_to_entries(scan_dir: str, prefix: str, metadata_entries: List[Me
             continue
         frame_count = int(m.group(3))
         metadata_entry = metadata_map[frame_count]
-        metadata_entry.write_to_exif(s, overwrite)
+        if not dryrun:
+            metadata_entry.write_to_exif(s, overwrite)
+        else:
+            print(f"Would have updated {str(s)}...")
+            print(f"\tTags: {metadata_entry.exif_tags}")
 
 def dayone_export_zip_to_json(f):
     with ZipFile(f) as z:
@@ -145,6 +155,7 @@ def dayone_export_to_exif():
     )
     parser.add_argument("--scandir", "-s", default=".", required=False)
     parser.add_argument("--inplace", "-i", action='store_true')
+    parser.add_argument("--dryrun",  action='store_true')
     parser.add_argument("prefix")
     parser.add_argument("dayone_export_zipfile")
 
@@ -154,10 +165,12 @@ def dayone_export_to_exif():
     prefix = ns.prefix
     dayone_export_zipfile = ns.dayone_export_zipfile
     overwrite = ns.inplace
+    dryrun = ns.dryrun
 
     json_dict = dayone_export_zip_to_json(dayone_export_zipfile)
     metadata_entries = read_entries(json_dict)
-    match_files_to_entries(scan_dir, prefix, metadata_entries, overwrite)
+    match_files_to_entries(scan_dir, prefix, metadata_entries,
+                           overwrite, dryrun)
 
 
 if __name__ == '__main__':
