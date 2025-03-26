@@ -81,17 +81,24 @@ class MetadataEntry(object):
 
 
     def populate_from_entry_tags(self):
-        aperture_tag = next(filter(_is_aperture_tag, self.entry_tags), None)
         shutter_tag = next(filter(_is_shutter_tag, self.entry_tags), None)
         if shutter_tag:
             if shutter_tag != 'APs':
                 shutter_speed = shutter_tag[:-1]
                 self.add_exif_tag("ShutterSpeedValue", shutter_speed)
             self.entry_tags.remove(shutter_tag)
+
+        aperture_tag = next(filter(_is_aperture_tag, self.entry_tags), None)
         if aperture_tag:
             aperture = aperture_tag[2:]
             self.add_exif_tag("ApertureValue", aperture)
             self.entry_tags.remove(aperture_tag)
+
+        lens_tag = next(filter(_is_lens_tag, self.entry_tags), None)
+        if lens_tag:
+            focal_length = parse_lens_tag(lens_tag)
+            if focal_length:
+                self.add_exif_tag("FocalLength", focal_length)
 
         if "unindexed" in self.entry_tags:
             self.entry_tags.remove("unindexed")
@@ -109,6 +116,15 @@ _SHUTTER_TAG_MATCHER = re.compile("(1/)?\\d+s")
 def _is_shutter_tag(tag):
     return _SHUTTER_TAG_MATCHER.match(tag)
 
+def _is_lens_tag(tag):
+    return tag.startswith("lens:")
+
+_LENS_FOCAL_LENGTH_MATCHER = re.compile("(\\d+mm)")
+def parse_lens_tag(tag):
+    m = _LENS_FOCAL_LENGTH_MATCHER.match(tag)
+    if not m:
+        return None
+    return m.group(1)
 
 def parse_frame_count(text):
     lines = text.split('\n')
