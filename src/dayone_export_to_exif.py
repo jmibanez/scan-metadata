@@ -79,6 +79,9 @@ class MetadataEntry(object):
             self.add_exif_tag("GPSLongitudeRef", lon)
             self.add_exif_tag("GPSHPositioningError", radius)
 
+        self.add_exif_tag("Country", self.location["country"])
+        self.add_exif_tag("State", self.location["administrativeArea"])
+
 
     def populate_from_entry_tags(self):
         shutter_tag = next(filter(_is_shutter_tag, self.entry_tags), None)
