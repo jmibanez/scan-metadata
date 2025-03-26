@@ -113,7 +113,7 @@ class MetadataEntry(object):
 
 
 def _is_aperture_tag(tag):
-    return tag[0:2] == "f/"
+    return tag.startswith("f/")
 
 _SHUTTER_TAG_MATCHER = re.compile("(1/)?\\d+s")
 def _is_shutter_tag(tag):
