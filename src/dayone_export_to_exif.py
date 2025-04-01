@@ -2,7 +2,7 @@
 
 import pytz
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentError
 from datetime import datetime
 from json import loads as json_loads
 from pathlib import Path
@@ -152,20 +152,18 @@ def read_entries(json_dict):
     return metadata_entries
 
 def match_files_to_entries(
-    scan_dir: str,
-    prefix: str,
+    filelist: List[Path],
     metadata_entries: List[MetadataEntry],
     overwrite: bool,
     dryrun: bool,
 ):
     # Expect (prefix)_(\d\d\d\d)
-    p = Path(scan_dir)
-    scans_to_apply = sorted(p.glob(f"{prefix}_*.tif"))
+    scans_to_apply = sorted(filelist)
     metadata_map = {
         int(e.frame_count): e
         for e in metadata_entries
     }
-    entry_matcher = re.compile(f"({prefix})_(0+)(\\d+)")
+    entry_matcher = re.compile(f"(.*)(0+)(\\d+)")
     for s in scans_to_apply:
         filename = s.stem
         m = entry_matcher.match(filename)
@@ -190,27 +188,33 @@ def dayone_export_zip_to_json(f):
         json_dict = json_loads(journal_bytes)
         return json_dict
 
+
+def path_to_file(s):
+    p = Path(s)
+    if p.exists() and p.is_file():
+        return p
+    else:
+        return None
+
 def dayone_export_to_exif():
     parser = ArgumentParser(
         description="Populate metadata for TIFF scans based on Day One journal entries",
     )
-    parser.add_argument("--scandir", "-s", default=".", required=False)
     parser.add_argument("--inplace", "-i", action='store_true')
-    parser.add_argument("--dryrun",  action='store_true')
-    parser.add_argument("prefix")
+    parser.add_argument("--dryrun", action='store_true')
     parser.add_argument("dayone_export_zipfile")
+    parser.add_argument("filelist", nargs="*" , type=path_to_file)
 
     ns = parser.parse_args()
 
-    scan_dir = ns.scandir
-    prefix = ns.prefix
     dayone_export_zipfile = ns.dayone_export_zipfile
     overwrite = ns.inplace
     dryrun = ns.dryrun
+    filelist = ns.filelist
 
     json_dict = dayone_export_zip_to_json(dayone_export_zipfile)
     metadata_entries = read_entries(json_dict)
-    match_files_to_entries(scan_dir, prefix, metadata_entries,
+    match_files_to_entries(filelist, metadata_entries,
                            overwrite, dryrun)
 
 
