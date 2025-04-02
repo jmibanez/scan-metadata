@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 
-use crate::models::{DayOneExport, MetadataEntry, to_metadata_entries};
+use crate::models::{to_metadata_entries, DayOneExport, MetadataEntry};
 
 pub mod models;
 

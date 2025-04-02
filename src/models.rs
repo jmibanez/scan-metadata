@@ -109,8 +109,7 @@ fn parse_frame_count(text: String) -> String {
 }
 
 pub fn to_metadata_entries(json: DayOneExport) -> Vec<MetadataEntry> {
-    json
-        .entries
+    json.entries
         .iter()
         .map(|e| {
             let mut entry = MetadataEntry::new(
@@ -157,7 +156,6 @@ impl MetadataEntry {
 
         self.populate_location_tags();
         self.populate_from_entry_tags();
-
     }
 
     fn populate_location_tags(&mut self) {
@@ -227,7 +225,7 @@ impl MetadataEntry {
             if tag == "120" {
                 *tag = "film:120".to_string();
             }
-            if tag == "35mm"   {
+            if tag == "35mm" {
                 *tag = "film:135".to_string();
             }
         }
@@ -262,7 +260,11 @@ impl MetadataEntry {
         let _result = proc.wait().unwrap();
     }
 
-    pub fn to_exiftool_cmd_line(&self, filepath: &PathBuf, overwrite_original: bool) -> Vec<String> {
+    pub fn to_exiftool_cmd_line(
+        &self,
+        filepath: &PathBuf,
+        overwrite_original: bool,
+    ) -> Vec<String> {
         let mut args = Vec::new();
 
         if overwrite_original {
