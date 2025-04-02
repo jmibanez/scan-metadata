@@ -190,8 +190,6 @@ impl MetadataEntry {
         self.populate_location_tags();
         self.populate_from_entry_tags();
 
-        let keyword_tag = self.entry_tags.to_exif_tag("Keywords");
-        self.exif_tags.push(keyword_tag);
     }
 
     fn populate_location_tags(&mut self) {
@@ -255,6 +253,19 @@ impl MetadataEntry {
 
             true
         });
+
+        // Replace film type tags (120, 135) with prefixed tags
+        for tag in self.entry_tags.iter_mut() {
+            if tag == "120" {
+                *tag = "film:120".to_string();
+            }
+            if tag == "35mm"   {
+                *tag = "film:135".to_string();
+            }
+        }
+
+        let keyword_tag = self.entry_tags.to_exif_tag("Keywords");
+        self.exif_tags.push(keyword_tag);
     }
 
     fn munge_date_with_framecount(&mut self) -> String {
