@@ -102,13 +102,6 @@ fn main() -> Result<(), ProgramError> {
     let json = dayone_export_zip_to_json(args.dayone_export_zip)?;
     let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json);
 
-    let filelist = args
-        .filelist
-        .iter()
-        .map(|f| f.to_str().unwrap().to_string())
-        .collect::<Vec<_>>()
-        .join(" ");
-    println!("Filelist: {}", filelist);
     match_files_to_entries(args.filelist, metadata_entries, args.inplace, args.dryrun);
 
     Ok(())
