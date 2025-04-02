@@ -2,7 +2,7 @@ use chrono::{DateTime, Local, Timelike};
 use regex::Regex;
 use serde::Deserialize;
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::Command;
 
 // #[derive(Deserialize)]
@@ -101,7 +101,7 @@ pub struct MetadataEntry {
 
 fn parse_frame_count(text: String) -> String {
     text.lines()
-        .nth(0)
+        .next()
         .and_then(|header| header.split_whitespace().nth(1))
         .unwrap_or("0")
         .parse()
@@ -195,14 +195,15 @@ impl MetadataEntry {
         let lens_focal_length_matcher = Regex::new(r"(\d+mm)").unwrap();
 
         self.entry_tags.retain(|tag| {
-            if shutter_tag_matcher.is_match(&tag) {
+            if shutter_tag_matcher.is_match(tag) {
                 self.exif_tags
-                    .push(tag.replace("s", "").to_exif_tag("ShutterSpeedValue"));
+                    .push(tag.replace('s', "").to_exif_tag("ShutterSpeedValue"));
                 return false;
             }
 
-            if tag.starts_with("f/") {
-                self.exif_tags.push(tag[2..].to_exif_tag("ApertureValue"));
+            if let Some(aperture_tag) = tag.strip_prefix("f/") {
+                self.exif_tags
+                    .push(aperture_tag.to_exif_tag("ApertureValue"));
                 return false;
             }
 
@@ -243,7 +244,7 @@ impl MetadataEntry {
             if let Some(tz_name) = &location.time_zone_name {
                 let tz = tz_name
                     .parse::<chrono::FixedOffset>()
-                    .unwrap_or_else(|_| Local::now().offset().clone());
+                    .unwrap_or_else(|_| *Local::now().offset());
                 return munged_datetime.with_timezone(&tz).to_rfc3339();
             }
         }
@@ -253,18 +254,14 @@ impl MetadataEntry {
             .to_rfc3339()
     }
 
-    pub fn write_to_exif(&self, filepath: &PathBuf, overwrite_original: bool) {
+    pub fn write_to_exif(&self, filepath: &Path, overwrite_original: bool) {
         let args = self.to_exiftool_cmd_line(filepath, overwrite_original);
         println!("Updating tags for {}", filepath.display());
         let mut proc = Command::new("exiftool").args(&args).spawn().unwrap();
         let _result = proc.wait().unwrap();
     }
 
-    pub fn to_exiftool_cmd_line(
-        &self,
-        filepath: &PathBuf,
-        overwrite_original: bool,
-    ) -> Vec<String> {
+    pub fn to_exiftool_cmd_line(&self, filepath: &Path, overwrite_original: bool) -> Vec<String> {
         let mut args = Vec::new();
 
         if overwrite_original {
@@ -283,6 +280,6 @@ impl MetadataEntry {
         }
 
         args.push(filepath.to_str().unwrap().to_string());
-        return args;
+        args
     }
 }
