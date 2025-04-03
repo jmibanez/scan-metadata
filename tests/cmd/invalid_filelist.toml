@@ -1,0 +1,9 @@
+bin.name = "scan-metadata"
+args = "test-export.zip 1"
+status = "success"
+fs.sandbox = true
+fs.base = "data"
+
+stdout = '''
+Processed 0/1 scan(s); found 1 metadata entries.
+'''

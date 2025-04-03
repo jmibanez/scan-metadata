@@ -6,6 +6,7 @@ use zip::ZipArchive;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use crate::exif::{
     get_default_processor, get_experimental_processor, ExifProcessor, ExifProcessorOptions,
@@ -49,16 +50,16 @@ pub enum ProgramError {
 
 #[derive(Error, Debug)]
 pub enum MetadataReadError {
-    #[error("Can't open file")]
+    #[error("Can't open file: {0}")]
     FileError(#[from] std::io::Error),
 
-    #[error("Not a valid ZIP file")]
+    #[error("Not a valid ZIP file: {0}")]
     ZipFileError(#[from] zip::result::ZipError),
 
-    #[error("Malformed JSON data in export")]
+    #[error("Malformed JSON data in export: {0}")]
     JsonError(#[from] serde_json::Error),
 
-    #[error("Malformed YAML data in camera profiles")]
+    #[error("Malformed YAML data in camera profiles: {0}")]
     YamlError(#[from] serde_yaml::Error),
 
     #[error("Malformed JSON, expected '1.0' got {0}")]
@@ -133,7 +134,7 @@ fn match_files_to_entries(
     );
 }
 
-fn main() -> Result<(), ProgramError> {
+fn scan_metadata() -> Result<(), ProgramError> {
     let args = Args::parse();
 
     let json = dayone_export_zip_to_json(args.dayone_export_zip)?;
@@ -157,4 +158,15 @@ fn main() -> Result<(), ProgramError> {
     );
 
     Ok(())
+}
+
+fn main() -> ExitCode {
+    let result = scan_metadata();
+    match result {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(ProgramError::MetadataError(e)) => {
+            eprintln!("ERROR: Could not read metadata for scans: {}", e);
+            ExitCode::from(2)
+        }
+    }
 }

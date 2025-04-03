@@ -1,0 +1,10 @@
+bin.name = "scan-metadata"
+args = "test-export.zip test-img0040.tif"
+status = "success"
+fs.sandbox = true
+fs.base = "data"
+
+stdout = '''
+Updating tags for test-img0040.tif
+Processed 1/1 scan(s); found 1 metadata entries.
+'''

@@ -1,0 +1,9 @@
+bin.name = "scan-metadata"
+args = "--profiles invalid-profile.yaml test-export.zip 1"
+status = "failed"
+fs.sandbox = true
+fs.base = "data"
+
+stderr = '''
+ERROR: Could not read metadata for scans: Malformed YAML data in camera profiles: .[0]: missing field `lens_profiles` at line 1 column 3
+'''

@@ -1,0 +1,9 @@
+bin.name = "scan-metadata"
+args = "invalid-content.zip 1"
+status = "failed"
+fs.sandbox = true
+fs.base = "data"
+
+stderr = '''
+ERROR: Could not read metadata for scans: Malformed JSON data in export: missing field `entries` at line 5 column 1
+'''

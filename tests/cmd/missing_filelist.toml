@@ -1,0 +1,12 @@
+bin.name = "scan-metadata"
+args = "test-meta.zip"
+status = "failed"
+
+stderr = '''
+error: the following required arguments were not provided:
+  <FILELIST>...
+
+Usage: scan-metadata <DAYONE_EXPORT_ZIP> <FILELIST>...
+
+For more information, try '--help'.
+'''
