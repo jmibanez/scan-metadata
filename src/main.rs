@@ -29,13 +29,14 @@ struct Args {
     #[arg(long)]
     experimental_exif: bool,
 
-    /// Use camera and lens profiles (YAML)
+    /// Use YAML with camera and lens profiles
     #[arg(short, long)]
     profiles: Option<PathBuf>,
 
     /// The path to the exported metadata, as a ZIP file
     dayone_export_zip: PathBuf,
 
+    #[arg(num_args=1.., required=true)]
     /// Scan files to update
     filelist: Vec<PathBuf>,
 }
