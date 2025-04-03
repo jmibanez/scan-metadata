@@ -62,7 +62,7 @@ pub enum MetadataReadError {
     #[error("Malformed YAML data in camera profiles: {0}")]
     YamlError(#[from] serde_yaml::Error),
 
-    #[error("Malformed JSON, expected '1.0' got {0}")]
+    #[error("Malformed version for JSON export, expected '1.0' got '{0}'")]
     InvalidVersionError(String),
 }
 
@@ -72,9 +72,15 @@ fn dayone_export_zip_to_json(
     let f = File::open(dayone_export_zip)?;
     let mut zip = ZipArchive::new(f)?;
     let result = zip.by_name("Journal.json")?;
-    let json = serde_json::from_reader(result)?;
+    let json: DayOneExport = serde_json::from_reader(result)?;
 
-    Ok(json)
+    if json.metadata.version != "1.0" {
+        Err(MetadataReadError::InvalidVersionError(
+            json.metadata.version.to_string(),
+        ))
+    } else {
+        Ok(json)
+    }
 }
 
 fn read_camera_profiles(

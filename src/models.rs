@@ -6,10 +6,10 @@ use std::collections::HashMap;
 
 use crate::exif::{ExifTag, ExifTagTrait};
 
-// #[derive(Deserialize)]
-// struct DayOneExportMetadata{
-//     version: String,
-// }
+#[derive(Deserialize)]
+pub struct DayOneExportMetadata {
+    pub version: String,
+}
 
 #[derive(Clone, Deserialize, Debug)]
 struct LongLat {
@@ -44,7 +44,7 @@ struct DayOneExportEntry {
 
 #[derive(Deserialize)]
 pub struct DayOneExport {
-    // metadata: DayOneExportMetadata,
+    pub metadata: DayOneExportMetadata,
     entries: Vec<DayOneExportEntry>,
 }
 

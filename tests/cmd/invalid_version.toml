@@ -1,0 +1,9 @@
+bin.name = "scan-metadata"
+args = "invalid-version.zip 1"
+status = "failed"
+fs.sandbox = true
+fs.base = "data"
+
+stderr = '''
+ERROR: Could not read metadata for scans: Malformed version for JSON export, expected '1.0' got '1.1'
+'''
