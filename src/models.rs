@@ -335,15 +335,18 @@ impl MetadataEntry {
             .to_rfc3339()
     }
 
-    pub fn write_to_exif(&self, filepath: &Path, overwrite_original: bool) {
+    pub fn write_to_exif(&self, filepath: &Path, overwrite_original: bool) -> bool {
         let args = self.to_exiftool_cmd_line(filepath, overwrite_original);
         println!("Updating tags for {}", filepath.display());
         let mut proc = Command::new("exiftool").args(&args).spawn().unwrap();
-        let _result = proc.wait().unwrap();
+        let result = proc.wait().unwrap();
+        result.success()
     }
 
     pub fn to_exiftool_cmd_line(&self, filepath: &Path, overwrite_original: bool) -> Vec<String> {
         let mut args = Vec::new();
+
+        args.push("-q".to_string());
 
         if overwrite_original {
             args.push("-overwrite_original_in_place".to_string());

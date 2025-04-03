@@ -94,6 +94,7 @@ fn match_files_to_entries(
         .collect();
 
     let entry_filename_matcher = Regex::new("(.*)(0+)(\\d+)").unwrap();
+    let mut process_count = 0;
     for scan in sorted_filelist.iter() {
         let filename_stem = scan.file_stem().unwrap().to_str().unwrap();
         if let Some(scan_frame_count_capture) = entry_filename_matcher.captures(filename_stem) {
@@ -104,16 +105,27 @@ fn match_files_to_entries(
                 .to_string();
             if let Some(entry) = metadata_map.get(&scan_frame_count) {
                 if !dryrun {
-                    entry.write_to_exif(scan, overwrite);
+                    if entry.write_to_exif(scan, overwrite) {
+                        process_count += 1;
+                    }
                 } else {
                     let args = entry.to_exiftool_cmd_line(scan, overwrite);
-                    let cmd = args.join(" ");
+                    let cmd = args.join(" \\\n\t\t");
                     println!("Would have updated {}", scan.display());
-                    println!("\t{}", cmd);
+                    println!("\texiftool {}", cmd);
+                    println!();
+                    process_count += 1;
                 }
             }
         }
     }
+
+    println!(
+        "Processed {}/{} scan(s); found {} metadata entries.",
+        process_count,
+        filelist.len(),
+        metadata_entries.len()
+    );
 }
 
 fn main() -> Result<(), ProgramError> {
