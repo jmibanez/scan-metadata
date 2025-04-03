@@ -94,13 +94,14 @@ impl ExifTagTrait for Vec<String> {
 #[derive(Debug)]
 pub struct MetadataEntry {
     frame_count: String,
+    text: String,
     entry_date: String,
     location: Option<DayOneLocation>,
     entry_tags: Vec<String>,
     exif_tags: Vec<ExifTag>,
 }
 
-fn parse_frame_count(text: String) -> String {
+fn parse_frame_count(text: &str) -> String {
     text.lines()
         .next()
         .and_then(|header| header.split_whitespace().nth(1))
@@ -132,17 +133,19 @@ pub fn to_metadata_entries(
 
 impl MetadataEntry {
     fn new(
-        raw_frame_count: String,
+        raw_text: String,
         entry_date: String,
         location: Option<DayOneLocation>,
         raw_entry_tags: Vec<String>,
     ) -> Self {
         let exif_tags = Vec::new();
         let mut entry_tags = raw_entry_tags.clone();
-        let frame_count = parse_frame_count(raw_frame_count);
+        let text = raw_text.clone();
+        let frame_count = parse_frame_count(&text);
         entry_tags.sort();
         Self {
             frame_count,
+            text,
             entry_date,
             location,
             entry_tags,
@@ -160,8 +163,24 @@ impl MetadataEntry {
             .to_exif_tag("DateTimeOriginal");
         self.exif_tags.push(munged_datetime_tag);
 
+        self.populate_caption_from_text();
+
         self.populate_location_tags();
         self.populate_from_entry_tags(profiles);
+    }
+
+    fn populate_caption_from_text(&mut self) {
+        let mut text_lines = self.text.lines();
+        text_lines.next();
+        let text_sans_header = text_lines.fold(String::new(), |mut a, b| {
+            a.reserve(b.len() + 1);
+            a.push('\n');
+            a.push_str(b);
+            a
+        });
+
+        let text_tag = text_sans_header.to_exif_tag("UserComment");
+        self.exif_tags.push(text_tag);
     }
 
     fn populate_location_tags(&mut self) {
