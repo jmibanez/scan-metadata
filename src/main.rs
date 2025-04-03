@@ -7,8 +7,10 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 
+use crate::exif::{get_default_processor, ExifProcessor, ExifProcessorOptions};
 use crate::models::{to_metadata_entries, CameraLensProfile, DayOneExport, MetadataEntry};
 
+pub mod exif;
 pub mod models;
 
 #[derive(Parser)]
@@ -81,6 +83,7 @@ fn read_camera_profiles(
 }
 
 fn match_files_to_entries(
+    proc: &Box<dyn ExifProcessor>,
     filelist: Vec<PathBuf>,
     metadata_entries: Vec<MetadataEntry>,
     overwrite: bool,
@@ -95,6 +98,10 @@ fn match_files_to_entries(
 
     let entry_filename_matcher = Regex::new("(.*)(0+)(\\d+)").unwrap();
     let mut process_count = 0;
+    let opt = ExifProcessorOptions {
+        dryrun,
+        inplace: overwrite,
+    };
     for scan in sorted_filelist.iter() {
         let filename_stem = scan.file_stem().unwrap().to_str().unwrap();
         if let Some(scan_frame_count_capture) = entry_filename_matcher.captures(filename_stem) {
@@ -104,16 +111,7 @@ fn match_files_to_entries(
                 .as_str()
                 .to_string();
             if let Some(entry) = metadata_map.get(&scan_frame_count) {
-                if !dryrun {
-                    if entry.write_to_exif(scan, overwrite) {
-                        process_count += 1;
-                    }
-                } else {
-                    let args = entry.to_exiftool_cmd_line(scan, overwrite);
-                    let cmd = args.join(" \\\n\t\t");
-                    println!("Would have updated {}", scan.display());
-                    println!("\texiftool {}", cmd);
-                    println!();
+                if proc.write_out_exif(scan, entry.exif_tags(), &opt) {
                     process_count += 1;
                 }
             }
@@ -135,8 +133,15 @@ fn main() -> Result<(), ProgramError> {
     let camera_profiles = read_camera_profiles(args.profiles)?;
 
     let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json, camera_profiles);
+    let proc = get_default_processor();
 
-    match_files_to_entries(args.filelist, metadata_entries, args.inplace, args.dryrun);
+    match_files_to_entries(
+        &proc,
+        args.filelist,
+        metadata_entries,
+        args.inplace,
+        args.dryrun,
+    );
 
     Ok(())
 }

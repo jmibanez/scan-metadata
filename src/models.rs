@@ -3,8 +3,8 @@ use regex::Regex;
 use serde::Deserialize;
 
 use std::collections::HashMap;
-use std::path::Path;
-use std::process::Command;
+
+use crate::exif::{ExifTag, ExifTagTrait};
 
 // #[derive(Deserialize)]
 // struct DayOneExportMetadata{
@@ -46,49 +46,6 @@ struct DayOneExportEntry {
 pub struct DayOneExport {
     // metadata: DayOneExportMetadata,
     entries: Vec<DayOneExportEntry>,
-}
-
-#[derive(Debug)]
-enum TagValue {
-    String(String),
-    List(Vec<String>),
-}
-
-#[derive(Debug)]
-struct ExifTag {
-    name: String,
-    value: TagValue,
-}
-
-trait ExifTagTrait {
-    fn to_exif_tag(&self, name: &str) -> ExifTag;
-}
-
-impl ExifTagTrait for str {
-    fn to_exif_tag(&self, name: &str) -> ExifTag {
-        ExifTag {
-            name: name.to_string(),
-            value: TagValue::String(self.to_string()),
-        }
-    }
-}
-
-impl ExifTagTrait for String {
-    fn to_exif_tag(&self, name: &str) -> ExifTag {
-        ExifTag {
-            name: name.to_string(),
-            value: TagValue::String(self.clone()),
-        }
-    }
-}
-
-impl ExifTagTrait for Vec<String> {
-    fn to_exif_tag(&self, name: &str) -> ExifTag {
-        ExifTag {
-            name: name.to_string(),
-            value: TagValue::List(self.clone()),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -155,6 +112,10 @@ impl MetadataEntry {
 
     pub fn frame_count(&self) -> &String {
         &self.frame_count
+    }
+
+    pub fn exif_tags(&self) -> &Vec<ExifTag> {
+        &self.exif_tags
     }
 
     pub fn populate_tags(&mut self, profiles: &CameraProfileMap) {
@@ -333,38 +294,6 @@ impl MetadataEntry {
         munged_datetime
             .with_timezone(&Local::now().offset().clone())
             .to_rfc3339()
-    }
-
-    pub fn write_to_exif(&self, filepath: &Path, overwrite_original: bool) -> bool {
-        let args = self.to_exiftool_cmd_line(filepath, overwrite_original);
-        println!("Updating tags for {}", filepath.display());
-        let mut proc = Command::new("exiftool").args(&args).spawn().unwrap();
-        let result = proc.wait().unwrap();
-        result.success()
-    }
-
-    pub fn to_exiftool_cmd_line(&self, filepath: &Path, overwrite_original: bool) -> Vec<String> {
-        let mut args = Vec::new();
-
-        args.push("-q".to_string());
-
-        if overwrite_original {
-            args.push("-overwrite_original_in_place".to_string());
-        }
-
-        for tag in self.exif_tags.iter() {
-            match &tag.value {
-                TagValue::String(v) => args.push(format!("-{}={}", tag.name, v)),
-                TagValue::List(l) => {
-                    for e in l.iter() {
-                        args.push(format!("-{}={}", tag.name, e));
-                    }
-                }
-            };
-        }
-
-        args.push(filepath.to_str().unwrap().to_string());
-        args
     }
 }
 
