@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 
-use crate::models::{to_metadata_entries, DayOneExport, MetadataEntry};
+use crate::models::{to_metadata_entries, CameraLensProfile, DayOneExport, MetadataEntry};
 
 pub mod models;
 
@@ -20,6 +20,10 @@ struct Args {
     /// Dry run; show what would be done to the scans
     #[arg(long)]
     dryrun: bool,
+
+    /// Use camera and lens profiles (YAML)
+    #[arg(short, long)]
+    profiles: Option<PathBuf>,
 
     /// The path to the exported metadata, as a ZIP file
     dayone_export_zip: PathBuf,
@@ -45,6 +49,9 @@ pub enum MetadataReadError {
     #[error("Malformed JSON data in export")]
     JsonError(#[from] serde_json::Error),
 
+    #[error("Malformed YAML data in camera profiles")]
+    YamlError(#[from] serde_yaml::Error),
+
     #[error("Malformed JSON, expected '1.0' got {0}")]
     InvalidVersionError(String),
 }
@@ -58,6 +65,19 @@ fn dayone_export_zip_to_json(
     let json = serde_json::from_reader(result)?;
 
     Ok(json)
+}
+
+fn read_camera_profiles(
+    camera_profiles_file: Option<PathBuf>,
+) -> Result<Option<Vec<CameraLensProfile>>, MetadataReadError> {
+    match camera_profiles_file {
+        Some(file) => {
+            let f = File::open(file)?;
+            let yaml = serde_yaml::from_reader(f)?;
+            Ok(Some(yaml))
+        }
+        None => Ok(None),
+    }
 }
 
 fn match_files_to_entries(
@@ -100,7 +120,9 @@ fn main() -> Result<(), ProgramError> {
     let args = Args::parse();
 
     let json = dayone_export_zip_to_json(args.dayone_export_zip)?;
-    let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json);
+    let camera_profiles = read_camera_profiles(args.profiles)?;
+
+    let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json, camera_profiles);
 
     match_files_to_entries(args.filelist, metadata_entries, args.inplace, args.dryrun);
 

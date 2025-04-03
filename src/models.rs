@@ -2,6 +2,7 @@ use chrono::{DateTime, Local, Timelike};
 use regex::Regex;
 use serde::Deserialize;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -108,7 +109,12 @@ fn parse_frame_count(text: String) -> String {
         .unwrap()
 }
 
-pub fn to_metadata_entries(json: DayOneExport) -> Vec<MetadataEntry> {
+pub fn to_metadata_entries(
+    json: DayOneExport,
+    camera_profiles: Option<Vec<CameraLensProfile>>,
+) -> Vec<MetadataEntry> {
+    let profiles = CameraProfileMap::new(camera_profiles);
+
     json.entries
         .iter()
         .map(|e| {
@@ -118,7 +124,7 @@ pub fn to_metadata_entries(json: DayOneExport) -> Vec<MetadataEntry> {
                 e.location.clone(),
                 e.tags.clone(),
             );
-            entry.populate_tags();
+            entry.populate_tags(&profiles);
             entry
         })
         .collect()
@@ -148,14 +154,14 @@ impl MetadataEntry {
         &self.frame_count
     }
 
-    pub fn populate_tags(&mut self) {
+    pub fn populate_tags(&mut self, profiles: &CameraProfileMap) {
         let munged_datetime_tag = self
             .munge_date_with_framecount()
             .to_exif_tag("DateTimeOriginal");
         self.exif_tags.push(munged_datetime_tag);
 
         self.populate_location_tags();
-        self.populate_from_entry_tags();
+        self.populate_from_entry_tags(profiles);
     }
 
     fn populate_location_tags(&mut self) {
@@ -190,9 +196,12 @@ impl MetadataEntry {
         }
     }
 
-    fn populate_from_entry_tags(&mut self) {
+    fn populate_from_entry_tags(&mut self, profiles: &CameraProfileMap) {
         let shutter_tag_matcher = Regex::new("(1/)?\\d+s").unwrap();
         let lens_focal_length_matcher = Regex::new(r"(\d+mm)").unwrap();
+
+        let mut found_camera_tag: Option<String> = None;
+        let mut found_lens_tag: Option<String> = None;
 
         self.entry_tags.retain(|tag| {
             if shutter_tag_matcher.is_match(tag) {
@@ -208,10 +217,15 @@ impl MetadataEntry {
             }
 
             if tag.starts_with("lens:") {
+                found_lens_tag = Some(tag.clone());
                 if let Some(captures) = lens_focal_length_matcher.captures(tag) {
                     self.exif_tags
                         .push(captures.get(1).unwrap().as_str().to_exif_tag("FocalLength"));
                 }
+            }
+
+            if tag.starts_with("camera:") {
+                found_camera_tag = Some(tag.clone());
             }
 
             if tag == "unindexed" || tag == "scanned" {
@@ -220,6 +234,8 @@ impl MetadataEntry {
 
             true
         });
+
+        self.populate_from_camera_profile(profiles, found_camera_tag, found_lens_tag);
 
         // Replace film type tags (120, 135) with prefixed tags
         for tag in self.entry_tags.iter_mut() {
@@ -233,6 +249,52 @@ impl MetadataEntry {
 
         let keyword_tag = self.entry_tags.to_exif_tag("Keywords");
         self.exif_tags.push(keyword_tag);
+    }
+
+    fn populate_from_camera_profile(
+        &mut self,
+        profiles: &CameraProfileMap,
+        camera_tag: Option<String>,
+        lens_tag: Option<String>,
+    ) {
+        if let Some(profile_tuple) = profiles.get_profile(camera_tag, lens_tag) {
+            let (camera_profile, lens_profile) = profile_tuple;
+            let min_focal_length =
+                format!("{}mm", lens_profile.min_focal_length_mm).to_exif_tag("MinFocalLength");
+            let max_focal_length =
+                format!("{}mm", lens_profile.max_focal_length_mm).to_exif_tag("MaxFocalLength");
+            let max_aperture_short_str = format!("f/{}", lens_profile.max_aperture_at_short);
+            let max_aperture_long_str = format!("f/{}", lens_profile.max_aperture_at_long);
+
+            let max_aperture = max_aperture_short_str.to_exif_tag("MaxAperture");
+            let max_aperture_at_short = max_aperture_short_str.to_exif_tag("MaxApertureAtMinFocal");
+            let max_aperture_at_long = max_aperture_long_str.to_exif_tag("MaxApertureAtMaxFocal");
+
+            let lens_model = lens_profile.name.to_exif_tag("LensModel");
+            let camera_label = camera_profile.name.to_exif_tag("CameraLabel");
+
+            self.exif_tags.push(lens_model);
+            self.exif_tags.push(camera_label);
+
+            self.exif_tags.push(min_focal_length);
+            self.exif_tags.push(max_focal_length);
+            self.exif_tags.push(max_aperture);
+            self.exif_tags.push(max_aperture_at_short);
+            self.exif_tags.push(max_aperture_at_long);
+
+            if let Some(exif_tags) = &lens_profile.exif_tags {
+                for (tag, value) in exif_tags.iter() {
+                    let exif_tag = value.to_exif_tag(tag);
+                    self.exif_tags.push(exif_tag);
+                }
+            }
+            if let Some(exif_tags) = &camera_profile.exif_tags {
+                for (tag, value) in exif_tags.iter() {
+                    let exif_tag = value.to_exif_tag(tag);
+                    self.exif_tags.push(exif_tag);
+                }
+            }
+        }
     }
 
     fn munge_date_with_framecount(&mut self) -> String {
@@ -281,5 +343,87 @@ impl MetadataEntry {
 
         args.push(filepath.to_str().unwrap().to_string());
         args
+    }
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct CameraLensProfile {
+    name: String,
+    tag: String,
+    exif_tags: Option<HashMap<String, String>>,
+    lens_profiles: Vec<LensProfile>,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct LensProfile {
+    name: String,
+    tag: String,
+    min_focal_length_mm: u16,
+    max_focal_length_mm: u16,
+    min_aperture: f32,
+    max_aperture_at_short: f32,
+    max_aperture_at_long: f32,
+
+    exif_tags: Option<HashMap<String, String>>,
+}
+
+struct CameraProfileMapEntry {
+    name: String,
+    lens_profiles: HashMap<String, LensProfile>,
+    exif_tags: Option<HashMap<String, String>>,
+}
+
+impl From<&CameraLensProfile> for CameraProfileMapEntry {
+    fn from(item: &CameraLensProfile) -> Self {
+        let lens_profiles_map: HashMap<_, _> = item
+            .lens_profiles
+            .iter()
+            .map(|p| (p.tag.clone(), p.clone()))
+            .collect();
+        CameraProfileMapEntry {
+            name: item.name.clone(),
+            lens_profiles: lens_profiles_map,
+            exif_tags: item.exif_tags.clone(),
+        }
+    }
+}
+
+pub struct CameraProfileMap {
+    cameras: HashMap<String, CameraProfileMapEntry>,
+}
+
+impl CameraProfileMap {
+    fn new(maybe_camera_profiles: Option<Vec<CameraLensProfile>>) -> Self {
+        match maybe_camera_profiles {
+            Some(camera_profiles) => {
+                let cameras: HashMap<_, _> = camera_profiles
+                    .iter()
+                    .map(|p| (p.tag.clone(), p.into()))
+                    .collect();
+                CameraProfileMap { cameras }
+            }
+            None => CameraProfileMap {
+                cameras: HashMap::new(),
+            },
+        }
+    }
+
+    fn get_profile(
+        &self,
+        maybe_camera_tag: Option<String>,
+        maybe_lens_tag: Option<String>,
+    ) -> Option<(&CameraProfileMapEntry, &LensProfile)> {
+        if let (Some(camera_tag), Some(lens_tag)) = (maybe_camera_tag, maybe_lens_tag) {
+            if let Some(camera_profile) = self.cameras.get(&camera_tag) {
+                camera_profile
+                    .lens_profiles
+                    .get(&lens_tag)
+                    .map(|lens_profile| (camera_profile, lens_profile))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
