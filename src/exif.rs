@@ -120,7 +120,7 @@ impl ExifProcessor for ExperimentalExifProcessor {
     fn write_out_exif(
         &self,
         filepath: &Path,
-        exif_tags: &Vec<ExifTag>,
+        _exif_tags: &Vec<ExifTag>,
         options: &ExifProcessorOptions,
     ) -> bool {
         if !options.dryrun {

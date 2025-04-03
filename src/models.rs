@@ -311,7 +311,7 @@ pub struct LensProfile {
     tag: String,
     min_focal_length_mm: u16,
     max_focal_length_mm: u16,
-    min_aperture: f32,
+    // min_aperture: f32,
     max_aperture_at_short: f32,
     max_aperture_at_long: f32,
 
