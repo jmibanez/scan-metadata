@@ -273,7 +273,7 @@ impl MetadataEntry {
                 TagValue::String(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::List(l) => {
                     for e in l.iter() {
-                        args.push(format!("-{}+={}", tag.name, e));
+                        args.push(format!("-{}={}", tag.name, e));
                     }
                 }
             };
