@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 
-use crate::exif::{get_default_processor, ExifProcessor, ExifProcessorOptions};
+use crate::exif::{
+    get_default_processor, get_experimental_processor, ExifProcessor, ExifProcessorOptions,
+};
 use crate::models::{to_metadata_entries, CameraLensProfile, DayOneExport, MetadataEntry};
 
 pub mod exif;
@@ -22,6 +24,10 @@ struct Args {
     /// Dry run; show what would be done to the scans
     #[arg(long)]
     dryrun: bool,
+
+    /// EXPERIMENTAL: Use pure Rust EXIF implementation
+    #[arg(long)]
+    experimental_exif: bool,
 
     /// Use camera and lens profiles (YAML)
     #[arg(short, long)]
@@ -133,7 +139,13 @@ fn main() -> Result<(), ProgramError> {
     let camera_profiles = read_camera_profiles(args.profiles)?;
 
     let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json, camera_profiles);
-    let proc = get_default_processor();
+    let proc;
+
+    if args.experimental_exif {
+        proc = get_experimental_processor();
+    } else {
+        proc = get_default_processor();
+    }
 
     match_files_to_entries(
         &proc,

@@ -114,6 +114,29 @@ impl ExifProcessor for ExifToolProcessor {
     }
 }
 
+struct ExperimentalExifProcessor {}
+
+impl ExifProcessor for ExperimentalExifProcessor {
+    fn write_out_exif(
+        &self,
+        filepath: &Path,
+        exif_tags: &Vec<ExifTag>,
+        options: &ExifProcessorOptions,
+    ) -> bool {
+        if !options.dryrun {
+            println!("EXPERIMENTAL Updating tags for {}", filepath.display());
+            true
+        } else {
+            println!("EXPERIMENTAL Would have updated {}", filepath.display());
+            true
+        }
+    }
+}
+
 pub fn get_default_processor() -> Box<dyn ExifProcessor> {
     Box::new(ExifToolProcessor {})
+}
+
+pub fn get_experimental_processor() -> Box<dyn ExifProcessor> {
+    Box::new(ExperimentalExifProcessor {})
 }
