@@ -1,0 +1,10 @@
+- name: Nikon FM3A
+  tag: "camera:fm3a"
+  lens_profiles:
+    - name: Canon 50mm f/1.4 LTM
+      tag: "lens:50mm1.4-AiS"
+      min_focal_length_mm: 50
+      max_focal_length_mm: 50
+      min_aperture: 22
+      max_aperture_at_short: 1.4
+      max_aperture_at_long: 1.4
