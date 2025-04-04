@@ -1,10 +1,10 @@
 bin.name = "scan-metadata"
-args = "test-export.zip test-img0040.tif"
+args = "test-export.zip test-img0040.jpg"
 status = "success"
 fs.sandbox = true
 fs.base = "data"
 
 stdout = '''
-Updating tags for test-img0040.tif
+Updating tags for test-img0040.jpg
 Processed 1/1 scan(s); found 1 metadata entries.
 '''
