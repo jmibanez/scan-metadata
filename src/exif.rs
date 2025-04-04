@@ -101,8 +101,11 @@ impl ExifProcessor for ExifToolProcessor {
         let args = self.to_exiftool_cmd_line(filepath, exif_tags, options);
         if !options.dryrun {
             println!("Updating tags for {}", filepath.display());
-            let mut proc = Command::new("exiftool").args(&args).spawn().unwrap();
-            let result = proc.wait().unwrap();
+            let maybe_proc = Command::new("exiftool").args(&args).spawn();
+            if maybe_proc.is_err() {
+                panic!("ERROR: Cannot update scans; exiftool not found in PATH. exiftool must be installed first.");
+            }
+            let result = maybe_proc.unwrap().wait().unwrap();
             result.success()
         } else {
             let cmd = args.join(" \\\n\t\t");
