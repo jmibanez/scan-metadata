@@ -153,14 +153,10 @@ impl MetadataEntry {
 
                 let gps_lat_tag = lat.to_exif_tag("GPSLatitude");
                 let gps_lon_tag = lon.to_exif_tag("GPSLongitude");
-                let gps_lat_ref_tag = lat.to_exif_tag("GPSLatitudeRef");
-                let gps_lon_ref_tag = lon.to_exif_tag("GPSLongitudeRef");
                 let gps_hpos_error_tag = radius.to_exif_tag("GPSHPositioningError");
 
                 self.exif_tags.push(gps_lat_tag);
                 self.exif_tags.push(gps_lon_tag);
-                self.exif_tags.push(gps_lat_ref_tag);
-                self.exif_tags.push(gps_lon_ref_tag);
                 self.exif_tags.push(gps_hpos_error_tag);
             }
 
