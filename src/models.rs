@@ -174,29 +174,29 @@ impl MetadataEntry {
 
     fn populate_from_entry_tags(&mut self, profiles: &CameraProfileMap) {
         let shutter_tag_matcher = Regex::new("(1/)?\\d+s").unwrap();
-        let lens_focal_length_matcher = Regex::new(r"(\d+mm)").unwrap();
+        let lens_focal_length_matcher = Regex::new(r"(\d+)mm").unwrap();
 
         let mut found_camera_tag: Option<String> = None;
         let mut found_lens_tag: Option<String> = None;
 
         self.entry_tags.retain(|tag| {
             if shutter_tag_matcher.is_match(tag) {
+                let shutter_speed = tag.strip_suffix('s').unwrap();
                 self.exif_tags
-                    .push(tag.replace('s', "").to_exif_tag("ShutterSpeedValue"));
+                    .push(shutter_speed.to_exif_tag("ExposureTime"));
                 return false;
             }
 
             if let Some(aperture_tag) = tag.strip_prefix("f/") {
-                self.exif_tags
-                    .push(aperture_tag.to_exif_tag("ApertureValue"));
+                self.exif_tags.push(aperture_tag.to_exif_tag("FNumber"));
                 return false;
             }
 
             if tag.starts_with("lens:") {
                 found_lens_tag = Some(tag.clone());
                 if let Some(captures) = lens_focal_length_matcher.captures(tag) {
-                    self.exif_tags
-                        .push(captures.get(1).unwrap().as_str().to_exif_tag("FocalLength"));
+                    let focal_length = captures.get(1).unwrap().as_str().parse::<f64>().unwrap();
+                    self.exif_tags.push(focal_length.to_exif_tag("FocalLength"));
                 }
             }
 
@@ -273,6 +273,7 @@ impl MetadataEntry {
         }
     }
 
+    const EXIF_DATE_FORMAT: &str = "%Y:%m:%d %H:%M:%S";
     fn munge_date_with_framecount(&mut self) -> String {
         let entry_date_as_date = DateTime::parse_from_rfc3339(&self.entry_date).unwrap();
         let munged_datetime = entry_date_as_date
@@ -283,13 +284,21 @@ impl MetadataEntry {
                 let tz = tz_name
                     .parse::<chrono::FixedOffset>()
                     .unwrap_or_else(|_| *Local::now().offset());
-                return munged_datetime.with_timezone(&tz).to_rfc3339();
+                return format!(
+                    "{}",
+                    munged_datetime
+                        .with_timezone(&tz)
+                        .format(Self::EXIF_DATE_FORMAT)
+                );
             }
         }
 
-        munged_datetime
-            .with_timezone(&Local::now().offset().clone())
-            .to_rfc3339()
+        format!(
+            "{}",
+            munged_datetime
+                .with_timezone(&Local::now().offset().clone())
+                .format(Self::EXIF_DATE_FORMAT)
+        )
     }
 }
 

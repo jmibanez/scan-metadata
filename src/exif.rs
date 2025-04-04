@@ -1,3 +1,4 @@
+use num::rational::Ratio;
 use std::path::Path;
 use std::process::Command;
 
@@ -9,12 +10,52 @@ pub struct ExifTag {
 
 #[derive(Debug)]
 pub enum TagValue {
+    Numeric(i32),
+    Rational(Ratio<i32>),
     String(String),
     List(Vec<String>),
 }
 
 pub trait ExifTagTrait {
     fn to_exif_tag(&self, name: &str) -> ExifTag;
+}
+
+impl ExifTagTrait for i32 {
+    fn to_exif_tag(&self, name: &str) -> ExifTag {
+        ExifTag {
+            name: name.to_string(),
+            value: TagValue::Numeric(*self),
+        }
+    }
+}
+
+impl ExifTagTrait for Ratio<i32> {
+    fn to_exif_tag(&self, name: &str) -> ExifTag {
+        ExifTag {
+            name: name.to_string(),
+            value: TagValue::Rational(*self),
+        }
+    }
+}
+
+impl ExifTagTrait for f32 {
+    fn to_exif_tag(&self, name: &str) -> ExifTag {
+        let ratio = Ratio::approximate_float(*self).unwrap();
+        ExifTag {
+            name: name.to_string(),
+            value: TagValue::Rational(ratio),
+        }
+    }
+}
+
+impl ExifTagTrait for f64 {
+    fn to_exif_tag(&self, name: &str) -> ExifTag {
+        let ratio = Ratio::approximate_float(*self).unwrap();
+        ExifTag {
+            name: name.to_string(),
+            value: TagValue::Rational(ratio),
+        }
+    }
 }
 
 impl ExifTagTrait for str {
@@ -78,6 +119,8 @@ impl ExifToolProcessor {
         for tag in exif_tags.iter() {
             match &tag.value {
                 TagValue::String(v) => args.push(format!("-{}={}", tag.name, v)),
+                TagValue::Numeric(v) => args.push(format!("-{}={}", tag.name, v)),
+                TagValue::Rational(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::List(l) => {
                     for e in l.iter() {
                         args.push(format!("-{}={}", tag.name, e));
