@@ -16,10 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Install exiftool
+    - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install exiftool
+        sudo apt-get install exiftool exiv2 gexiv2
     - name: Build
       run: cargo build --verbose
     - name: Run tests
