@@ -201,7 +201,7 @@ lazy_static! {
         m.insert("LensModel", "Xmp.exifEX.LensModel");
         m.insert("CameraLabel", "Xmp.xmpDM.cameraLabel");
         m.insert("UserComment", "Exif.Photo.UserComment");
-        m.insert("Keywords", "Xmp.iptc.Application2.Keywords");
+        m.insert("Keywords", "Iptc.Application2.Keywords");
         m
     };
 }
