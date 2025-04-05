@@ -313,11 +313,12 @@ impl ExperimentalExifProcessor {
             maybe_max_aperture_at_min,
             maybe_max_aperture_at_max,
         ) {
-            let mut lens_spec_vec = Vec::new();
-            lens_spec_vec.push(min_focal_length.clone());
-            lens_spec_vec.push(max_focal_length.clone());
-            lens_spec_vec.push(max_aperture_at_min.clone());
-            lens_spec_vec.push(max_aperture_at_max.clone());
+            let lens_spec_vec = vec![
+                min_focal_length.clone(),
+                max_focal_length.clone(),
+                max_aperture_at_min.clone(),
+                max_aperture_at_max.clone(),
+            ];
             let lens_spec_tag = lens_spec_vec.to_exif_tag("Exif.Photo.LensSpecification");
             self.apply_exif_tag(meta, &lens_spec_tag);
         }
