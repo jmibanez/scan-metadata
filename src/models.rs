@@ -89,6 +89,10 @@ pub fn to_metadata_entries(
         .collect()
 }
 
+fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
+    (aperture_fstop.log2() * 2.0).round_ties_even() as i8
+}
+
 impl MetadataEntry {
     fn new(
         raw_text: String,
@@ -270,7 +274,8 @@ impl MetadataEntry {
             let max_aperture_short_str = format!("f/{}", lens_profile.max_aperture_at_short);
             let max_aperture_long_str = format!("f/{}", lens_profile.max_aperture_at_long);
 
-            let max_aperture = max_aperture_short_str.to_exif_tag("MaxAperture");
+            let max_aperture_val = calculate_aperture_apex_val(lens_profile.max_aperture_at_short);
+            let max_aperture = max_aperture_val.to_exif_tag("MaxAperture");
             let max_aperture_at_short = max_aperture_short_str.to_exif_tag("MaxApertureAtMinFocal");
             let max_aperture_at_long = max_aperture_long_str.to_exif_tag("MaxApertureAtMaxFocal");
 
@@ -416,5 +421,17 @@ impl CameraProfileMap {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_calculate_correct_aperture_apex_val() {
+        assert_eq!(0, calculate_aperture_apex_val(1.0));
+        assert_eq!(2, calculate_aperture_apex_val(2.0));
+        assert_eq!(5, calculate_aperture_apex_val(5.6));
     }
 }

@@ -37,6 +37,15 @@ impl ExifTagTrait for i32 {
     }
 }
 
+impl ExifTagTrait for i8 {
+    fn to_exif_tag(&self, name: &str) -> ExifTag {
+        ExifTag {
+            name: name.to_string(),
+            value: TagValue::Numeric(*self as i32),
+        }
+    }
+}
+
 impl ExifTagTrait for Ratio<i32> {
     fn to_exif_tag(&self, name: &str) -> ExifTag {
         ExifTag {
@@ -186,7 +195,7 @@ lazy_static! {
         m.insert("State", "Xmp.iptcExt.ProvinceState");
         m.insert("FNumber", "Exif.Photo.FNumber");
         m.insert("ExposureTime", "Exif.Photo.ExposureTime");
-        m.insert("MaxAperture", "Xmp.exif.MaxApertureValue");
+        m.insert("MaxAperture", "Exif.Image.MaxApertureValue");
         m.insert("FocalLength", "Exif.Photo.FocalLength");
         m.insert("LensMake", "Xmp.exifEX.LensMake");
         m.insert("LensModel", "Xmp.exifEX.LensModel");
