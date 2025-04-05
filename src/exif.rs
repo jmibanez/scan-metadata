@@ -191,8 +191,8 @@ lazy_static! {
         m.insert("GPSLatitude", "Exif.GPSInfo.GPSLatitude");
         m.insert("GPSLongitude", "Exif.GPSInfo.GPSLongitude");
         m.insert("GPSHPositioningError", "Exif.GPSInfo.GPSHPositioningError");
-        m.insert("Country", "Xmp.iptcExt.CountryName");
-        m.insert("State", "Xmp.iptcExt.ProvinceState");
+        m.insert("Country", "Xmp.photoshop.Country");
+        m.insert("State", "Xmp.photoshop.State");
         m.insert("FNumber", "Exif.Photo.FNumber");
         m.insert("ExposureTime", "Exif.Photo.ExposureTime");
         m.insert("MaxAperture", "Exif.Image.MaxApertureValue");
