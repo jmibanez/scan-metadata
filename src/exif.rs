@@ -227,22 +227,22 @@ impl ExifProcessor for ExperimentalExifProcessor {
             let mut lens_spec: [String; 4] = Default::default();
             for tag in exif_tags.iter() {
                 if tag.name == "MinFocalLength" {
-                    if let TagValue::String(s) = &tag.value{
+                    if let TagValue::String(s) = &tag.value {
                         lens_spec[0] = s.clone()
                     }
                 }
                 if tag.name == "MaxFocalLength" {
-                    if let TagValue::String(s) = &tag.value{
+                    if let TagValue::String(s) = &tag.value {
                         lens_spec[1] = s.clone()
                     }
                 }
-                if tag.name == "MaxApertureAtMinFocal"   {
-                    if let TagValue::String(s) = &tag.value{
+                if tag.name == "MaxApertureAtMinFocal" {
+                    if let TagValue::String(s) = &tag.value {
                         lens_spec[2] = s.clone()
                     }
                 }
-                if tag.name == "MaxApertureAtMaxFocal"   {
-                    if let TagValue::String(s) = &tag.value{
+                if tag.name == "MaxApertureAtMaxFocal" {
+                    if let TagValue::String(s) = &tag.value {
                         lens_spec[3] = s.clone()
                     }
                 }
@@ -252,7 +252,11 @@ impl ExifProcessor for ExperimentalExifProcessor {
             self.apply_exif_tag(&meta, &lens_spec_tag);
 
             for tag in exif_tags.iter() {
-                if tag.name == "MinFocalLength" || tag.name == "MaxFocalLength" || tag.name == "MaxApertureAtMinFocal" || tag.name == "MaxApertureAtMaxFocal" {
+                if tag.name == "MinFocalLength"
+                    || tag.name == "MaxFocalLength"
+                    || tag.name == "MaxApertureAtMinFocal"
+                    || tag.name == "MaxApertureAtMaxFocal"
+                {
                     continue;
                 }
                 self.apply_exif_tag(&meta, tag);
