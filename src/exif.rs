@@ -3,7 +3,7 @@ use log::{debug, warn, LevelFilter};
 use num::rational::Ratio;
 use rexiv2::{set_log_level, LogLevel, Metadata};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -20,6 +20,7 @@ pub struct ExifTag {
 pub enum TagValue {
     Numeric(i32),
     Rational(Ratio<i32>),
+    Float(f64),
     String(String),
     List(Vec<String>),
 }
@@ -57,20 +58,18 @@ impl ExifTagTrait for Ratio<i32> {
 
 impl ExifTagTrait for f32 {
     fn to_exif_tag(&self, name: &str) -> ExifTag {
-        let ratio = Ratio::approximate_float(*self).unwrap();
         ExifTag {
             name: name.to_string(),
-            value: TagValue::Rational(ratio),
+            value: TagValue::Float(*self as f64),
         }
     }
 }
 
 impl ExifTagTrait for f64 {
     fn to_exif_tag(&self, name: &str) -> ExifTag {
-        let ratio = Ratio::approximate_float(*self).unwrap();
         ExifTag {
             name: name.to_string(),
-            value: TagValue::Rational(ratio),
+            value: TagValue::Float(*self),
         }
     }
 }
@@ -144,6 +143,7 @@ impl ExifToolProcessor {
                 TagValue::String(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::Numeric(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::Rational(v) => args.push(format!("-{}={}", tag.name, v)),
+                TagValue::Float(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::List(l) => {
                     for e in l.iter() {
                         args.push(format!("-{}={}", tag.name, e));
@@ -204,6 +204,16 @@ lazy_static! {
         m.insert("Keywords", "Iptc.Application2.Keywords");
         m
     };
+    static ref SPECIAL_CASED_TAG: HashSet<&'static str> = {
+        let mut s = HashSet::new();
+        s.insert("MinFocalLength");
+        s.insert("MaxFocalLength");
+        s.insert("MaxApertureAtMinFocal");
+        s.insert("MaxApertureAtMaxFocal");
+        s.insert("GPSLatitude");
+        s.insert("GPSLongitude");
+        s
+    };
 }
 
 fn translate_tag_to_exiv(tag_name: &str) -> &str {
@@ -219,6 +229,10 @@ impl ExperimentalExifProcessor {
             TagValue::String(v) => meta.set_tag_string(tag_name, v),
             TagValue::Numeric(v) => meta.set_tag_numeric(tag_name, *v),
             TagValue::Rational(v) => meta.set_tag_rational(tag_name, v),
+            TagValue::Float(v) => {
+                let ratio = Ratio::approximate_float(*v).unwrap();
+                meta.set_tag_rational(tag_name, &ratio)
+            }
             TagValue::List(l) => {
                 let l_str: Vec<&str> = l.iter().map(|e| e.as_str()).collect();
                 meta.set_tag_multiple_strings(tag_name, l_str.as_slice())
@@ -229,6 +243,76 @@ impl ExperimentalExifProcessor {
             let err = result.err().unwrap();
             warn!("Error writing {}: {}", tag_name, err);
         }
+    }
+
+    fn handle_special_case_tags(&self, meta: &Metadata, exif_tags: &[ExifTag]) {
+        // Special case tags here
+        let mut lens_spec: [String; 4] = Default::default();
+        let mut latitude: f64 = 0.0;
+        let mut longitude: f64 = 0.0;
+
+        for tag in exif_tags.iter() {
+            if tag.name == "MinFocalLength" {
+                if let TagValue::String(s) = &tag.value {
+                    lens_spec[0] = s.clone()
+                } else {
+                    panic!("Unexpected type for MinFocalLength");
+                }
+            }
+            if tag.name == "MaxFocalLength" {
+                if let TagValue::String(s) = &tag.value {
+                    lens_spec[1] = s.clone()
+                } else {
+                    panic!("Unexpected type for MaxFocalLength");
+                }
+            }
+            if tag.name == "MaxApertureAtMinFocal" {
+                if let TagValue::String(s) = &tag.value {
+                    lens_spec[2] = s.clone()
+                } else {
+                    panic!("Unexpected type for MaxApertureAtMinFocal");
+                }
+            }
+            if tag.name == "MaxApertureAtMaxFocal" {
+                if let TagValue::String(s) = &tag.value {
+                    lens_spec[3] = s.clone()
+                } else {
+                    panic!("Unexpected type for MaxApertureAtMaxFocal");
+                }
+            }
+
+            if tag.name == "GPSLatitude" {
+                if let TagValue::Float(s) = &tag.value {
+                    latitude = *s;
+                } else {
+                    panic!("Unexpected type for GPSLatitude");
+                }
+            }
+            if tag.name == "GPSLongitude" {
+                if let TagValue::Float(s) = &tag.value {
+                    longitude = *s;
+                } else {
+                    panic!("Unexpected type for GPSLongitude");
+                }
+            }
+        }
+
+        let lens_spec_tag = Vec::from(lens_spec).to_exif_tag("Exif.Photo.LensSpecification");
+        self.apply_exif_tag(meta, &lens_spec_tag);
+
+        match meta.set_gps_info(&rexiv2::GpsInfo {
+            latitude,
+            longitude,
+            altitude: 0.0,
+        }) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(
+                    "Could not set GPS info with values {} {}: {}",
+                    latitude, longitude, e
+                );
+            }
+        };
     }
 }
 
@@ -242,41 +326,13 @@ impl ExifProcessor for ExperimentalExifProcessor {
         if !options.dryrun {
             cli_message!("EXPERIMENTAL Updating tags for {}", filepath.display());
             let meta = Metadata::new_from_path(filepath).unwrap();
+
             set_log_level(LogLevel::MUTE);
 
-            let mut lens_spec: [String; 4] = Default::default();
-            for tag in exif_tags.iter() {
-                if tag.name == "MinFocalLength" {
-                    if let TagValue::String(s) = &tag.value {
-                        lens_spec[0] = s.clone()
-                    }
-                }
-                if tag.name == "MaxFocalLength" {
-                    if let TagValue::String(s) = &tag.value {
-                        lens_spec[1] = s.clone()
-                    }
-                }
-                if tag.name == "MaxApertureAtMinFocal" {
-                    if let TagValue::String(s) = &tag.value {
-                        lens_spec[2] = s.clone()
-                    }
-                }
-                if tag.name == "MaxApertureAtMaxFocal" {
-                    if let TagValue::String(s) = &tag.value {
-                        lens_spec[3] = s.clone()
-                    }
-                }
-            }
-
-            let lens_spec_tag = Vec::from(lens_spec).to_exif_tag("Exif.Photo.LensSpecification");
-            self.apply_exif_tag(&meta, &lens_spec_tag);
+            self.handle_special_case_tags(&meta, exif_tags);
 
             for tag in exif_tags.iter() {
-                if tag.name == "MinFocalLength"
-                    || tag.name == "MaxFocalLength"
-                    || tag.name == "MaxApertureAtMinFocal"
-                    || tag.name == "MaxApertureAtMaxFocal"
-                {
+                if SPECIAL_CASED_TAG.contains(tag.name.as_str()) {
                     continue;
                 }
                 self.apply_exif_tag(&meta, tag);

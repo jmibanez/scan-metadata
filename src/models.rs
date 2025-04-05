@@ -159,9 +159,9 @@ impl MetadataEntry {
     fn populate_location_tags(&mut self) {
         if let Some(location) = &self.location {
             if let Some(region) = &location.region {
-                let lat = region.center.latitude.to_string();
-                let lon = region.center.longitude.to_string();
-                let radius = region.radius.to_string();
+                let lat = region.center.latitude;
+                let lon = region.center.longitude;
+                let radius = region.radius;
 
                 let gps_lat_tag = lat.to_exif_tag("GPSLatitude");
                 let gps_lon_tag = lon.to_exif_tag("GPSLongitude");
