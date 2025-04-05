@@ -247,35 +247,40 @@ impl ExperimentalExifProcessor {
 
     fn handle_special_case_tags(&self, meta: &Metadata, exif_tags: &[ExifTag]) {
         // Special case tags here
-        let mut lens_spec: [String; 4] = Default::default();
-        let mut latitude: f64 = 0.0;
-        let mut longitude: f64 = 0.0;
+
+        let mut maybe_latitude: Option<f64> = None;
+        let mut maybe_longitude: Option<f64> = None;
+
+        let mut maybe_min_focal_length: Option<&String> = None;
+        let mut maybe_max_focal_length: Option<&String> = None;
+        let mut maybe_max_aperture_at_min: Option<&String> = None;
+        let mut maybe_max_aperture_at_max: Option<&String> = None;
 
         for tag in exif_tags.iter() {
             if tag.name == "MinFocalLength" {
                 if let TagValue::String(s) = &tag.value {
-                    lens_spec[0] = s.clone()
+                    maybe_min_focal_length = Some(s);
                 } else {
                     panic!("Unexpected type for MinFocalLength");
                 }
             }
             if tag.name == "MaxFocalLength" {
                 if let TagValue::String(s) = &tag.value {
-                    lens_spec[1] = s.clone()
+                    maybe_max_focal_length = Some(s);
                 } else {
                     panic!("Unexpected type for MaxFocalLength");
                 }
             }
             if tag.name == "MaxApertureAtMinFocal" {
                 if let TagValue::String(s) = &tag.value {
-                    lens_spec[2] = s.clone()
+                    maybe_max_aperture_at_min = Some(s);
                 } else {
                     panic!("Unexpected type for MaxApertureAtMinFocal");
                 }
             }
             if tag.name == "MaxApertureAtMaxFocal" {
                 if let TagValue::String(s) = &tag.value {
-                    lens_spec[3] = s.clone()
+                    maybe_max_aperture_at_max = Some(s);
                 } else {
                     panic!("Unexpected type for MaxApertureAtMaxFocal");
                 }
@@ -283,36 +288,55 @@ impl ExperimentalExifProcessor {
 
             if tag.name == "GPSLatitude" {
                 if let TagValue::Float(s) = &tag.value {
-                    latitude = *s;
+                    maybe_latitude = Some(*s);
                 } else {
                     panic!("Unexpected type for GPSLatitude");
                 }
             }
             if tag.name == "GPSLongitude" {
                 if let TagValue::Float(s) = &tag.value {
-                    longitude = *s;
+                    maybe_longitude = Some(*s);
                 } else {
                     panic!("Unexpected type for GPSLongitude");
                 }
             }
         }
 
-        let lens_spec_tag = Vec::from(lens_spec).to_exif_tag("Exif.Photo.LensSpecification");
-        self.apply_exif_tag(meta, &lens_spec_tag);
+        if let (
+            Some(min_focal_length),
+            Some(max_focal_length),
+            Some(max_aperture_at_min),
+            Some(max_aperture_at_max),
+        ) = (
+            maybe_min_focal_length,
+            maybe_max_focal_length,
+            maybe_max_aperture_at_min,
+            maybe_max_aperture_at_max,
+        ) {
+            let mut lens_spec_vec = Vec::new();
+            lens_spec_vec.push(min_focal_length.clone());
+            lens_spec_vec.push(max_focal_length.clone());
+            lens_spec_vec.push(max_aperture_at_min.clone());
+            lens_spec_vec.push(max_aperture_at_max.clone());
+            let lens_spec_tag = lens_spec_vec.to_exif_tag("Exif.Photo.LensSpecification");
+            self.apply_exif_tag(meta, &lens_spec_tag);
+        }
 
-        match meta.set_gps_info(&rexiv2::GpsInfo {
-            latitude,
-            longitude,
-            altitude: 0.0,
-        }) {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(
-                    "Could not set GPS info with values {} {}: {}",
-                    latitude, longitude, e
-                );
-            }
-        };
+        if let (Some(latitude), Some(longitude)) = (maybe_latitude, maybe_longitude) {
+            match meta.set_gps_info(&rexiv2::GpsInfo {
+                latitude,
+                longitude,
+                altitude: 0.0,
+            }) {
+                Ok(_) => (),
+                Err(e) => {
+                    warn!(
+                        "Could not set GPS info with values {} {}: {}",
+                        latitude, longitude, e
+                    );
+                }
+            };
+        }
     }
 }
 
