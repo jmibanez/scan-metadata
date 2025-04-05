@@ -14,6 +14,8 @@ Arguments:
   <FILELIST>...        Scan files to update
 
 Options:
+  -q, --quiet                Quiet; minimize output to errors
+      --debug                Turn on debug logging
   -i, --inplace              Modify scans in place
       --dryrun               Dry run; show what would be done to the scans
       --experimental-exif    EXPERIMENTAL: Use pure Rust EXIF implementation

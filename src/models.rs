@@ -1,4 +1,5 @@
 use chrono::{DateTime, Local, Timelike};
+use log::debug;
 use regex::Regex;
 use serde::Deserialize;
 
@@ -119,9 +120,12 @@ impl MetadataEntry {
     }
 
     pub fn populate_tags(&mut self, profiles: &CameraProfileMap) {
-        let munged_datetime_tag = self
-            .munge_date_with_framecount()
-            .to_exif_tag("DateTimeOriginal");
+        let munged_datetime = self.munge_date_with_framecount();
+        let munged_datetime_tag = munged_datetime.to_exif_tag("DateTimeOriginal");
+        debug!(
+            "Frame {}: Munging date/time to {}",
+            self.frame_count, munged_datetime
+        );
         self.exif_tags.push(munged_datetime_tag);
 
         self.populate_caption_from_text();
@@ -141,6 +145,10 @@ impl MetadataEntry {
         });
 
         let text_tag = text_sans_header.to_exif_tag("UserComment");
+        debug!(
+            "Frame {}: Found caption: {}",
+            self.frame_count, text_sans_header
+        );
         self.exif_tags.push(text_tag);
     }
 
@@ -158,15 +166,24 @@ impl MetadataEntry {
                 self.exif_tags.push(gps_lat_tag);
                 self.exif_tags.push(gps_lon_tag);
                 self.exif_tags.push(gps_hpos_error_tag);
+                debug!(
+                    "Frame {}: Found GPS: lat {} lon {} hpos {}",
+                    self.frame_count, lat, lon, radius
+                );
             }
 
             if let Some(country) = &location.country {
                 let country_tag = country.to_exif_tag("Country");
+                debug!("Frame {}: Found Country: {}", self.frame_count, country);
                 self.exif_tags.push(country_tag);
             }
 
             if let Some(admin_area) = &location.administrative_area {
                 let admin_area_tag = admin_area.to_exif_tag("State");
+                debug!(
+                    "Frame {}: Found Admin Area: {}",
+                    self.frame_count, admin_area
+                );
                 self.exif_tags.push(admin_area_tag);
             }
         }
@@ -184,16 +201,22 @@ impl MetadataEntry {
                 let shutter_speed = tag.strip_suffix('s').unwrap();
                 self.exif_tags
                     .push(shutter_speed.to_exif_tag("ExposureTime"));
+                debug!(
+                    "Frame {}: Shutter speed: {}",
+                    self.frame_count, shutter_speed
+                );
                 return false;
             }
 
             if let Some(aperture_tag) = tag.strip_prefix("f/") {
                 self.exif_tags.push(aperture_tag.to_exif_tag("FNumber"));
+                debug!("Frame {}: Aperture: {}", self.frame_count, aperture_tag);
                 return false;
             }
 
             if tag.starts_with("lens:") {
                 found_lens_tag = Some(tag.clone());
+                debug!("Frame {}: Found lens tag: {}", self.frame_count, tag);
                 if let Some(captures) = lens_focal_length_matcher.captures(tag) {
                     let focal_length = captures.get(1).unwrap().as_str().parse::<f64>().unwrap();
                     self.exif_tags.push(focal_length.to_exif_tag("FocalLength"));
@@ -235,6 +258,11 @@ impl MetadataEntry {
     ) {
         if let Some(profile_tuple) = profiles.get_profile(camera_tag, lens_tag) {
             let (camera_profile, lens_profile) = profile_tuple;
+            debug!(
+                "    : Found camera and lens profile: {}, {}",
+                camera_profile.name, lens_profile.name
+            );
+
             let min_focal_length =
                 format!("{}mm", lens_profile.min_focal_length_mm).to_exif_tag("MinFocalLength");
             let max_focal_length =
@@ -323,6 +351,7 @@ pub struct LensProfile {
     exif_tags: Option<HashMap<String, String>>,
 }
 
+#[derive(Debug)]
 struct CameraProfileMapEntry {
     name: String,
     lens_profiles: HashMap<String, LensProfile>,
@@ -356,6 +385,7 @@ impl CameraProfileMap {
                     .iter()
                     .map(|p| (p.tag.clone(), p.into()))
                     .collect();
+                debug!("Loaded camera profiles: {:#?}", cameras);
                 CameraProfileMap { cameras }
             }
             None => CameraProfileMap {
@@ -371,11 +401,16 @@ impl CameraProfileMap {
     ) -> Option<(&CameraProfileMapEntry, &LensProfile)> {
         if let (Some(camera_tag), Some(lens_tag)) = (maybe_camera_tag, maybe_lens_tag) {
             if let Some(camera_profile) = self.cameras.get(&camera_tag) {
+                debug!(
+                    "    : Looking up lens profile for camera {}, {}",
+                    camera_tag, lens_tag
+                );
                 camera_profile
                     .lens_profiles
                     .get(&lens_tag)
                     .map(|lens_profile| (camera_profile, lens_profile))
             } else {
+                debug!("    : No matching camera profile: {}", camera_tag);
                 None
             }
         } else {

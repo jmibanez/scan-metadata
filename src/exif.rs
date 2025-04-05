@@ -1,10 +1,14 @@
 use lazy_static::lazy_static;
+use log::{debug, warn, LevelFilter};
 use num::rational::Ratio;
 use rexiv2::{set_log_level, LogLevel, Metadata};
 
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+
+use crate::cli_message;
+use crate::util;
 
 #[derive(Debug)]
 pub struct ExifTag {
@@ -114,7 +118,13 @@ impl ExifToolProcessor {
     ) -> Vec<String> {
         let mut args = Vec::new();
 
-        args.push("-q".to_string());
+        unsafe {
+            if util::LOG_LEVEL != LevelFilter::Debug {
+                args.push("-q".to_string());
+            } else {
+                args.push("-v4".to_string());
+            }
+        }
 
         if options.inplace {
             args.push("-overwrite_original_in_place".to_string());
@@ -134,6 +144,7 @@ impl ExifToolProcessor {
         }
 
         args.push(filepath.to_str().unwrap().to_string());
+        debug!("Arguments to exiftool: {:#?}", args);
         args
     }
 }
@@ -147,7 +158,7 @@ impl ExifProcessor for ExifToolProcessor {
     ) -> bool {
         let args = self.to_exiftool_cmd_line(filepath, exif_tags, options);
         if !options.dryrun {
-            println!("Updating tags for {}", filepath.display());
+            cli_message!("Updating tags for {}", filepath.display());
             let maybe_proc = Command::new("exiftool").args(&args).spawn();
             if maybe_proc.is_err() {
                 panic!("ERROR: Cannot update scans; exiftool not found in PATH. exiftool must be installed first.");
@@ -156,9 +167,9 @@ impl ExifProcessor for ExifToolProcessor {
             result.success()
         } else {
             let cmd = args.join(" \\\n\t\t");
-            println!("Would have updated {}", filepath.display());
-            println!("\texiftool {}", cmd);
-            println!();
+            cli_message!("Would have updated {}", filepath.display());
+            cli_message!("\texiftool {}", cmd);
+            cli_message!();
             true
         }
     }
@@ -207,7 +218,7 @@ impl ExperimentalExifProcessor {
 
         if result.is_err() {
             let err = result.err().unwrap();
-            println!("Error writing {}: {}", tag_name, err);
+            warn!("Error writing {}: {}", tag_name, err);
         }
     }
 }
@@ -220,7 +231,7 @@ impl ExifProcessor for ExperimentalExifProcessor {
         options: &ExifProcessorOptions,
     ) -> bool {
         if !options.dryrun {
-            println!("EXPERIMENTAL Updating tags for {}", filepath.display());
+            cli_message!("EXPERIMENTAL Updating tags for {}", filepath.display());
             let meta = Metadata::new_from_path(filepath).unwrap();
             set_log_level(LogLevel::MUTE);
 
@@ -270,8 +281,8 @@ impl ExifProcessor for ExperimentalExifProcessor {
                 match copy(filepath, newpath) {
                     Ok(_) => (),
                     Err(e) => {
-                        println!(
-                            "WARNING: Could not preserve original {}, falling back to in-place: {}",
+                        warn!(
+                            "Could not preserve original {}, falling back to in-place: {}",
                             filepath.display(),
                             e
                         );
@@ -282,8 +293,8 @@ impl ExifProcessor for ExperimentalExifProcessor {
             match meta.save_to_file(filepath) {
                 Ok(()) => true,
                 Err(e) => {
-                    println!(
-                        "WARNING: Could not update metadata for scan {}: {}",
+                    warn!(
+                        "Could not update metadata for scan {}: {}",
                         filepath.display(),
                         e
                     );
@@ -291,7 +302,7 @@ impl ExifProcessor for ExperimentalExifProcessor {
                 }
             }
         } else {
-            println!("EXPERIMENTAL Would have updated {}", filepath.display());
+            cli_message!("EXPERIMENTAL Would have updated {}", filepath.display());
             true
         }
     }

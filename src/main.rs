@@ -1,5 +1,7 @@
 use clap::Parser;
+use log::{error, LevelFilter};
 use regex::Regex;
+use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 use thiserror::Error;
 use zip::ZipArchive;
 
@@ -15,9 +17,18 @@ use crate::models::{to_metadata_entries, CameraLensProfile, DayOneExport, Metada
 
 pub mod exif;
 pub mod models;
+pub mod util;
 
 #[derive(Parser)]
 struct Args {
+    /// Quiet; minimize output to errors
+    #[arg(short, long)]
+    quiet: bool,
+
+    /// Turn on debug logging
+    #[arg(long)]
+    debug: bool,
+
     /// Modify scans in place
     #[arg(short, long)]
     inplace: bool,
@@ -132,7 +143,7 @@ fn match_files_to_entries(
         }
     }
 
-    println!(
+    cli_message!(
         "Processed {}/{} scan(s); found {} metadata entries.",
         process_count,
         filelist.len(),
@@ -142,6 +153,23 @@ fn match_files_to_entries(
 
 fn scan_metadata() -> Result<(), ProgramError> {
     let args = Args::parse();
+
+    let level: LevelFilter;
+    unsafe {
+        if args.quiet {
+            util::LOG_LEVEL = LevelFilter::Off;
+        } else if args.debug {
+            util::LOG_LEVEL = LevelFilter::Debug
+        }
+        level = util::LOG_LEVEL;
+    }
+
+    let _ = TermLogger::init(
+        level,
+        Config::default(),
+        TerminalMode::Stderr,
+        ColorChoice::Auto,
+    );
 
     let json = dayone_export_zip_to_json(args.dayone_export_zip)?;
     let camera_profiles = read_camera_profiles(args.profiles)?;
@@ -170,7 +198,7 @@ fn main() -> ExitCode {
     match result {
         Ok(_) => ExitCode::SUCCESS,
         Err(ProgramError::MetadataError(e)) => {
-            eprintln!("ERROR: Could not read metadata for scans: {}", e);
+            error!("Could not read metadata for scans: {}", e);
             ExitCode::from(2)
         }
     }
