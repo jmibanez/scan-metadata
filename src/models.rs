@@ -144,7 +144,7 @@ impl MetadataEntry {
         let text_sans_header = text_lines.fold(String::new(), |mut a, b| {
             a.reserve(b.len() + 1);
             a.push('\n');
-            a.push_str(b);
+            a.push_str(&b.replace("\\", ""));
             a
         });
 
