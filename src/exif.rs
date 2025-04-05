@@ -98,7 +98,7 @@ pub trait ExifProcessor {
     fn write_out_exif(
         &self,
         filepath: &Path,
-        exif_tags: &Vec<ExifTag>,
+        exif_tags: &[ExifTag],
         options: &ExifProcessorOptions,
     ) -> bool;
 }
@@ -109,7 +109,7 @@ impl ExifToolProcessor {
     fn to_exiftool_cmd_line(
         &self,
         filepath: &Path,
-        exif_tags: &Vec<ExifTag>,
+        exif_tags: &[ExifTag],
         options: &ExifProcessorOptions,
     ) -> Vec<String> {
         let mut args = Vec::new();
@@ -142,7 +142,7 @@ impl ExifProcessor for ExifToolProcessor {
     fn write_out_exif(
         &self,
         filepath: &Path,
-        exif_tags: &Vec<ExifTag>,
+        exif_tags: &[ExifTag],
         options: &ExifProcessorOptions,
     ) -> bool {
         let args = self.to_exiftool_cmd_line(filepath, exif_tags, options);
@@ -216,7 +216,7 @@ impl ExifProcessor for ExperimentalExifProcessor {
     fn write_out_exif(
         &self,
         filepath: &Path,
-        exif_tags: &Vec<ExifTag>,
+        exif_tags: &[ExifTag],
         options: &ExifProcessorOptions,
     ) -> bool {
         if !options.dryrun {
@@ -293,10 +293,10 @@ impl ExifProcessor for ExperimentalExifProcessor {
     }
 }
 
-pub fn get_default_processor() -> Box<dyn ExifProcessor> {
-    Box::new(ExifToolProcessor {})
+pub fn get_default_processor() -> impl ExifProcessor {
+    ExifToolProcessor {}
 }
 
-pub fn get_experimental_processor() -> Box<dyn ExifProcessor> {
-    Box::new(ExperimentalExifProcessor {})
+pub fn get_experimental_processor() -> impl ExifProcessor {
+    ExperimentalExifProcessor {}
 }

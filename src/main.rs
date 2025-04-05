@@ -97,7 +97,7 @@ fn read_camera_profiles(
 }
 
 fn match_files_to_entries(
-    proc: &Box<dyn ExifProcessor>,
+    proc: &dyn ExifProcessor,
     filelist: Vec<PathBuf>,
     metadata_entries: Vec<MetadataEntry>,
     overwrite: bool,
@@ -147,16 +147,15 @@ fn scan_metadata() -> Result<(), ProgramError> {
     let camera_profiles = read_camera_profiles(args.profiles)?;
 
     let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json, camera_profiles);
-    let proc;
 
-    if args.experimental_exif {
-        proc = get_experimental_processor();
+    let proc: &dyn ExifProcessor = if args.experimental_exif {
+        &get_experimental_processor()
     } else {
-        proc = get_default_processor();
-    }
+        &get_default_processor()
+    };
 
     match_files_to_entries(
-        &proc,
+        proc,
         args.filelist,
         metadata_entries,
         args.inplace,
