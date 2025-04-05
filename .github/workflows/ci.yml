@@ -19,7 +19,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install exiftool exiv2 libgexiv2-2
+        sudo apt-get install exiftool exiv2 libgexiv2-2 libgexiv2-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
