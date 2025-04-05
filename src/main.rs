@@ -1,6 +1,7 @@
 use clap::Parser;
 use log::{error, LevelFilter};
 use regex::Regex;
+use rexiv2::LogLevel;
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 use thiserror::Error;
 use zip::ZipArchive;
@@ -157,8 +158,10 @@ fn scan_metadata() -> Result<(), ProgramError> {
     let level: LevelFilter;
     unsafe {
         if args.quiet {
+            rexiv2::set_log_level(LogLevel::MUTE);
             util::LOG_LEVEL = LevelFilter::Off;
         } else if args.debug {
+            rexiv2::set_log_level(LogLevel::WARN);
             util::LOG_LEVEL = LevelFilter::Debug
         }
         level = util::LOG_LEVEL;

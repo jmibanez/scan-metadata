@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use log::{debug, warn, LevelFilter};
 use num::rational::Ratio;
-use rexiv2::{set_log_level, LogLevel, Metadata};
+use rexiv2::Metadata;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -326,8 +326,6 @@ impl ExifProcessor for ExperimentalExifProcessor {
         if !options.dryrun {
             cli_message!("EXPERIMENTAL Updating tags for {}", filepath.display());
             let meta = Metadata::new_from_path(filepath).unwrap();
-
-            set_log_level(LogLevel::MUTE);
 
             self.handle_special_case_tags(&meta, exif_tags);
 
