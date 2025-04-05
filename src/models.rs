@@ -213,9 +213,11 @@ impl MetadataEntry {
             }
 
             if let Some(aperture_tag) = tag.strip_prefix("f/") {
-                self.exif_tags.push(aperture_tag.to_exif_tag("FNumber"));
-                debug!("Frame {}: Aperture: {}", self.frame_count, aperture_tag);
-                return false;
+                if let Ok(f_number) = aperture_tag.parse::<f32>() {
+                    self.exif_tags.push(f_number.to_exif_tag("FNumber"));
+                    debug!("Frame {}: Aperture: {}", self.frame_count, aperture_tag);
+                    return false;
+                }
             }
 
             if tag.starts_with("lens:") {
