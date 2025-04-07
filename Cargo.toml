@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 chrono = { version = "0.4.40", features = ["alloc"] }
+chrono-tz = "0.10.3"
 clap = { version = "4.5.35", features = ["derive"] }
 either = "1.15.0"
 lazy_static = "1.5.0"

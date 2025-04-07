@@ -1,5 +1,6 @@
 use chrono::{DateTime, Local, Timelike};
-use log::debug;
+use chrono_tz::Tz;
+use log::{debug, warn};
 use regex::Regex;
 use serde::Deserialize;
 
@@ -77,14 +78,13 @@ pub fn to_metadata_entries(
     json.entries
         .iter()
         .map(|e| {
-            let mut entry = MetadataEntry::new(
+            MetadataEntry::new(
                 e.text.clone(),
                 e.creation_date.clone(),
                 e.location.clone(),
                 e.tags.clone(),
-            );
-            entry.populate_tags(&profiles);
-            entry
+                &profiles,
+            )
         })
         .collect()
 }
@@ -99,20 +99,24 @@ impl MetadataEntry {
         entry_date: String,
         location: Option<DayOneLocation>,
         raw_entry_tags: Vec<String>,
+        profiles: &CameraProfileMap,
     ) -> Self {
         let exif_tags = Vec::new();
         let mut entry_tags = raw_entry_tags.clone();
         let text = raw_text.clone();
         let frame_count = parse_frame_count(&text);
         entry_tags.sort();
-        Self {
+        let mut entry = Self {
             frame_count,
             text,
             entry_date,
             location,
             entry_tags,
             exif_tags,
-        }
+        };
+        entry.populate_tags(profiles);
+
+        entry
     }
 
     pub fn frame_count(&self) -> &String {
@@ -123,7 +127,7 @@ impl MetadataEntry {
         &self.exif_tags
     }
 
-    pub fn populate_tags(&mut self, profiles: &CameraProfileMap) {
+    fn populate_tags(&mut self, profiles: &CameraProfileMap) {
         let munged_datetime = self.munge_date_with_framecount();
         let munged_datetime_tag = munged_datetime.to_exif_tag("DateTimeOriginal");
         debug!(
@@ -309,29 +313,38 @@ impl MetadataEntry {
     }
 
     const EXIF_DATE_FORMAT: &str = "%Y:%m:%d %H:%M:%S";
-    fn munge_date_with_framecount(&mut self) -> String {
+
+    fn munge_date_with_framecount(&self) -> String {
         let entry_date_as_date = DateTime::parse_from_rfc3339(&self.entry_date).unwrap();
         let munged_datetime = entry_date_as_date
             .with_second(self.frame_count.parse::<u32>().unwrap())
             .unwrap();
+        let local_tz = *Local::now().offset();
         if let Some(location) = &self.location {
             if let Some(tz_name) = &location.time_zone_name {
-                let tz = tz_name
-                    .parse::<chrono::FixedOffset>()
-                    .unwrap_or_else(|_| *Local::now().offset());
-                return format!(
-                    "{}",
-                    munged_datetime
-                        .with_timezone(&tz)
-                        .format(Self::EXIF_DATE_FORMAT)
-                );
+                let maybe_tz = tz_name.parse::<Tz>();
+                let formatted_munged_datetime = match maybe_tz {
+                    Ok(tz) => {
+                        debug!("TZ => {}", tz);
+                        munged_datetime
+                            .with_timezone(&tz)
+                            .format(Self::EXIF_DATE_FORMAT)
+                    }
+                    Err(e) => {
+                        warn!("Couldn't find '{}', falling back to local: {}", tz_name, e);
+                        munged_datetime
+                            .with_timezone(&local_tz)
+                            .format(Self::EXIF_DATE_FORMAT)
+                    }
+                };
+                return format!("{}", formatted_munged_datetime);
             }
         }
 
         format!(
             "{}",
             munged_datetime
-                .with_timezone(&Local::now().offset().clone())
+                .with_timezone(&local_tz)
                 .format(Self::EXIF_DATE_FORMAT)
         )
     }
@@ -428,6 +441,10 @@ impl CameraProfileMap {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use crate::exif::TagValue;
+
     use super::*;
 
     #[test]
@@ -435,5 +452,334 @@ mod tests {
         assert_eq!(0, calculate_aperture_apex_val(1.0));
         assert_eq!(2, calculate_aperture_apex_val(2.0));
         assert_eq!(5, calculate_aperture_apex_val(5.6));
+    }
+
+    #[test]
+    fn should_munge_datetime_from_export() {
+        let metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: Some(DayOneLocation {
+                region: Some(DayOneRegion {
+                    center: LongLat {
+                        longitude: -12.34,
+                        latitude: -56.78,
+                    },
+                    radius: 0.0,
+                }),
+                country: Some("Country".to_string()),
+                administrative_area: Some("AdminArea".to_string()),
+                time_zone_name: Some("UTC".to_string()),
+            }),
+            entry_tags: Vec::default(),
+            exif_tags: Vec::new(),
+        };
+
+        assert_eq!("2025:01:02 03:04:59", metadata.munge_date_with_framecount());
+    }
+
+    #[test]
+    fn should_munge_datetime_from_export_with_given_timezone() {
+        let metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: Some(DayOneLocation {
+                region: Some(DayOneRegion {
+                    center: LongLat {
+                        longitude: -12.34,
+                        latitude: -56.78,
+                    },
+                    radius: 0.0,
+                }),
+                country: Some("Country".to_string()),
+                administrative_area: Some("AdminArea".to_string()),
+                time_zone_name: Some("Australia/Sydney".to_string()),
+            }),
+            entry_tags: Vec::default(),
+            exif_tags: Vec::new(),
+        };
+
+        assert_eq!("2025:01:02 14:04:59", metadata.munge_date_with_framecount());
+    }
+
+    #[test]
+    fn should_munge_datetime_from_export_falling_back_to_local() {
+        let metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: Some(DayOneLocation {
+                region: Some(DayOneRegion {
+                    center: LongLat {
+                        longitude: -12.34,
+                        latitude: -56.78,
+                    },
+                    radius: 0.0,
+                }),
+                country: Some("Country".to_string()),
+                administrative_area: Some("AdminArea".to_string()),
+                time_zone_name: Some("Australia/Foo".to_string()),
+            }),
+            entry_tags: Vec::default(),
+            exif_tags: Vec::new(),
+        };
+
+        let local_tz = *Local::now().offset();
+        let expected_munged_entry_date = Utc
+            .with_ymd_and_hms(2025, 1, 2, 3, 4, 59)
+            .unwrap()
+            .with_timezone(&local_tz);
+        assert_eq!(
+            format!(
+                "{}",
+                expected_munged_entry_date.format(MetadataEntry::EXIF_DATE_FORMAT)
+            ),
+            metadata.munge_date_with_framecount()
+        );
+    }
+
+    #[test]
+    fn should_populate_location_tags() {
+        let mut metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: Some(DayOneLocation {
+                region: Some(DayOneRegion {
+                    center: LongLat {
+                        longitude: -12.34,
+                        latitude: -56.78,
+                    },
+                    radius: 0.0,
+                }),
+                country: Some("Country".to_string()),
+                administrative_area: Some("AdminArea".to_string()),
+                time_zone_name: Some("Australia/Foo".to_string()),
+            }),
+            entry_tags: Vec::default(),
+            exif_tags: Vec::new(),
+        };
+        metadata.populate_location_tags();
+
+        assert!(metadata
+            .exif_tags
+            .contains(&(-56.78).to_exif_tag("GPSLatitude")));
+        assert!(metadata
+            .exif_tags
+            .contains(&(-12.34).to_exif_tag("GPSLongitude")));
+        assert!(metadata
+            .exif_tags
+            .contains(&"Country".to_exif_tag("Country")));
+        assert!(metadata
+            .exif_tags
+            .contains(&"AdminArea".to_exif_tag("State")));
+    }
+
+    #[test]
+    fn should_populate_from_entry_tags() {
+        let tags = vec![
+            "lens:35mm".to_string(),
+            "camera:canonp".to_string(),
+            "f/2".to_string(),
+            "1/500s".to_string(),
+            "unindexed".to_string(),
+            "scanned".to_string(),
+        ];
+        let profiles = CameraProfileMap {
+            cameras: HashMap::default(),
+        };
+        let mut metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: None,
+            entry_tags: tags,
+            exif_tags: Vec::new(),
+        };
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
+        assert!(!metadata.entry_tags.contains(&"scanned".to_string()));
+        assert!(!metadata.entry_tags.contains(&"f/2".to_string()));
+        assert!(!metadata.entry_tags.contains(&"1/500s".to_string()));
+
+        let tag_map: HashMap<_, _> = metadata
+            .exif_tags
+            .iter()
+            .map(|t| (t.name.clone(), t))
+            .collect();
+
+        assert!(tag_map.contains_key("ExposureTime"));
+        assert_eq!(
+            TagValue::String("1/500".to_string()),
+            tag_map.get("ExposureTime").unwrap().value
+        );
+        assert!(tag_map.contains_key("FNumber"));
+        assert_eq!(TagValue::Float(2.0), tag_map.get("FNumber").unwrap().value);
+        assert!(tag_map.contains_key("FocalLength"));
+        assert_eq!(
+            TagValue::Float(35.0),
+            tag_map.get("FocalLength").unwrap().value
+        );
+    }
+
+    #[test]
+    fn when_populate_from_entry_tags_should_ignore_invalid_aperture() {
+        let tags = vec![
+            "lens:35mm".to_string(),
+            "camera:canonp".to_string(),
+            "f/a".to_string(),
+            "1/500s".to_string(),
+            "unindexed".to_string(),
+            "scanned".to_string(),
+        ];
+        let profiles = CameraProfileMap {
+            cameras: HashMap::default(),
+        };
+        let mut metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: None,
+            entry_tags: tags,
+            exif_tags: Vec::new(),
+        };
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
+        assert!(!metadata.entry_tags.contains(&"scanned".to_string()));
+        assert!(!metadata.entry_tags.contains(&"f/2".to_string()));
+        assert!(!metadata.entry_tags.contains(&"1/500s".to_string()));
+
+        let tag_map: HashMap<_, _> = metadata
+            .exif_tags
+            .iter()
+            .map(|t| (t.name.clone(), t))
+            .collect();
+
+        assert!(tag_map.contains_key("ExposureTime"));
+        assert_eq!(
+            TagValue::String("1/500".to_string()),
+            tag_map.get("ExposureTime").unwrap().value
+        );
+        assert!(!tag_map.contains_key("FNumber"));
+
+        assert!(tag_map.contains_key("FocalLength"));
+        assert_eq!(
+            TagValue::Float(35.0),
+            tag_map.get("FocalLength").unwrap().value
+        );
+    }
+
+    #[test]
+    fn when_populate_from_entry_tags_should_handle_unconventional_lens_tag() {
+        let tags = vec![
+            "lens:50mm1.4-AiS".to_string(),
+            "camera:canonp".to_string(),
+            "f/2".to_string(),
+            "1/500s".to_string(),
+            "unindexed".to_string(),
+            "scanned".to_string(),
+        ];
+        let profiles = CameraProfileMap {
+            cameras: HashMap::default(),
+        };
+        let mut metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: None,
+            entry_tags: tags,
+            exif_tags: Vec::new(),
+        };
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
+        assert!(!metadata.entry_tags.contains(&"scanned".to_string()));
+        assert!(!metadata.entry_tags.contains(&"f/2".to_string()));
+        assert!(!metadata.entry_tags.contains(&"1/500s".to_string()));
+
+        let tag_map: HashMap<_, _> = metadata
+            .exif_tags
+            .iter()
+            .map(|t| (t.name.clone(), t))
+            .collect();
+
+        assert!(tag_map.contains_key("ExposureTime"));
+        assert_eq!(
+            TagValue::String("1/500".to_string()),
+            tag_map.get("ExposureTime").unwrap().value
+        );
+        assert!(tag_map.contains_key("FNumber"));
+        assert_eq!(TagValue::Float(2.0), tag_map.get("FNumber").unwrap().value);
+        assert!(tag_map.contains_key("FocalLength"));
+        assert_eq!(
+            TagValue::Float(50.0),
+            tag_map.get("FocalLength").unwrap().value
+        );
+    }
+
+    #[test]
+    fn when_populate_from_entry_tags_should_transform_film_type_tags() {
+        let tags = vec!["120".to_string(), "35mm".to_string()];
+        let profiles = CameraProfileMap {
+            cameras: HashMap::default(),
+        };
+        let mut metadata = MetadataEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            frame_count: "59".to_string(),
+            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            location: None,
+            entry_tags: tags,
+            exif_tags: Vec::new(),
+        };
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry_tags.contains(&"35mm".to_string()));
+        assert!(metadata.entry_tags.contains(&"film:135".to_string()));
+
+        assert!(!metadata.entry_tags.contains(&"120".to_string()));
+        assert!(metadata.entry_tags.contains(&"film:120".to_string()));
+    }
+
+    #[test]
+    fn should_create_metadata_entry_given_entry_from_export() {
+        let loc = DayOneLocation {
+            region: Some(DayOneRegion {
+                center: LongLat {
+                    longitude: -12.34,
+                    latitude: -56.78,
+                },
+                radius: 0.0,
+            }),
+            country: Some("Country".to_string()),
+            administrative_area: Some("AdminArea".to_string()),
+            time_zone_name: Some("UTC".to_string()),
+        };
+        let profiles = CameraProfileMap {
+            cameras: HashMap::default(),
+        };
+
+        let metadata = MetadataEntry::new(
+            "# 1 // Some raw text\nSome body".to_string(),
+            "2025-01-02T03:04:56Z".to_string(),
+            Some(loc),
+            vec![
+                "APs".to_string(),
+                "f/8".to_string(),
+                "lens:50mm".to_string(),
+                "camera:fm3a".to_string(),
+            ],
+            &profiles,
+        );
+        let result_exif_tags = metadata.exif_tags();
+        let tag_map: HashMap<_, _> = result_exif_tags
+            .iter()
+            .map(|t| (t.name.clone(), t))
+            .collect();
+
+        assert!(tag_map.contains_key("DateTimeOriginal"));
+        assert_eq!(
+            TagValue::String("2025:01:02 03:04:01".to_string()),
+            tag_map.get("DateTimeOriginal").unwrap().value
+        );
     }
 }

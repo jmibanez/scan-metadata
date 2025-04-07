@@ -10,13 +10,13 @@ use std::process::Command;
 use crate::cli_message;
 use crate::util;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ExifTag {
-    name: String,
-    value: TagValue,
+    pub name: String,
+    pub value: TagValue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TagValue {
     Numeric(i32),
     Rational(Ratio<i32>),
