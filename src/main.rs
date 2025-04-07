@@ -122,7 +122,7 @@ fn match_files_to_entries(
         .map(|e| (e.frame_count(), e))
         .collect();
 
-    let entry_filename_matcher = Regex::new("(0+)(\\d+)$").unwrap();
+    let entry_filename_matcher = Regex::new("(\\d{1,2})$").unwrap();
     let mut process_count = 0;
     let opt = ExifProcessorOptions {
         dryrun,
@@ -132,7 +132,7 @@ fn match_files_to_entries(
         let filename_stem = scan.file_stem().unwrap().to_str().unwrap();
         if let Some(scan_frame_count_capture) = entry_filename_matcher.captures(filename_stem) {
             let scan_frame_count = scan_frame_count_capture
-                .get(2)
+                .get(1)
                 .unwrap()
                 .as_str()
                 .to_string();
