@@ -126,12 +126,10 @@ impl ExifToolProcessor {
     ) -> Vec<String> {
         let mut args = Vec::new();
 
-        unsafe {
-            if util::LOG_LEVEL != LevelFilter::Debug {
-                args.push("-q".to_string());
-            } else {
-                args.push("-v4".to_string());
-            }
+        if !util::is_log_level(LevelFilter::Debug) {
+            args.push("-q".to_string());
+        } else {
+            args.push("-v4".to_string());
         }
 
         if options.inplace {

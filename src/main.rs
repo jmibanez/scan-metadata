@@ -156,16 +156,14 @@ fn scan_metadata() -> Result<(), ProgramError> {
     let args = Args::parse();
 
     let level: LevelFilter;
-    unsafe {
-        if args.quiet {
-            rexiv2::set_log_level(LogLevel::MUTE);
-            util::LOG_LEVEL = LevelFilter::Off;
-        } else if args.debug {
-            rexiv2::set_log_level(LogLevel::WARN);
-            util::LOG_LEVEL = LevelFilter::Debug
-        }
-        level = util::LOG_LEVEL;
+    if args.quiet {
+        rexiv2::set_log_level(LogLevel::MUTE);
+        util::set_log_level(LevelFilter::Off);
+    } else if args.debug {
+        rexiv2::set_log_level(LogLevel::WARN);
+        util::set_log_level(LevelFilter::Debug);
     }
+    level = util::get_log_level();
 
     let _ = TermLogger::init(
         level,
