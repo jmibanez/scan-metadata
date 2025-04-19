@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, Timelike};
+use chrono::{DateTime, FixedOffset, Local, Timelike};
 use chrono_tz::Tz;
 use log::{debug, warn};
 use regex::Regex;
@@ -39,8 +39,8 @@ struct DayOneLocation {
 struct DayOneExportEntry {
     location: Option<DayOneLocation>,
     tags: Vec<String>,
-    #[serde(rename = "creationDate")]
-    creation_date: String,
+    #[serde(rename = "creationDate", with = "json_date")]
+    creation_date: DateTime<FixedOffset>,
     text: String,
 }
 
@@ -54,7 +54,7 @@ pub struct DayOneExport {
 pub struct MetadataEntry {
     frame_count: String,
     text: String,
-    entry_date: String,
+    entry_date: DateTime<FixedOffset>,
     location: Option<DayOneLocation>,
     entry_tags: Vec<String>,
     exif_tags: Vec<ExifTag>,
@@ -69,6 +69,19 @@ fn parse_frame_count(text: &str) -> String {
         .unwrap()
 }
 
+mod json_date {
+    use chrono::{DateTime, FixedOffset};
+    use serde::{self, Deserialize, Deserializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<FixedOffset>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        DateTime::parse_from_rfc3339(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 pub fn to_metadata_entries(
     json: DayOneExport,
     camera_profiles: Option<Vec<CameraLensProfile>>,
@@ -80,7 +93,7 @@ pub fn to_metadata_entries(
         .map(|e| {
             MetadataEntry::new(
                 e.text.clone(),
-                e.creation_date.clone(),
+                e.creation_date,
                 e.location.clone(),
                 e.tags.clone(),
                 &profiles,
@@ -96,7 +109,7 @@ fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
 impl MetadataEntry {
     fn new(
         raw_text: String,
-        entry_date: String,
+        entry_date: DateTime<FixedOffset>,
         location: Option<DayOneLocation>,
         raw_entry_tags: Vec<String>,
         profiles: &CameraProfileMap,
@@ -315,8 +328,8 @@ impl MetadataEntry {
     const EXIF_DATE_FORMAT: &str = "%Y:%m:%d %H:%M:%S";
 
     fn munge_date_with_framecount(&self) -> String {
-        let entry_date_as_date = DateTime::parse_from_rfc3339(&self.entry_date).unwrap();
-        let munged_datetime = entry_date_as_date
+        let munged_datetime = self
+            .entry_date
             .with_second(self.frame_count.parse::<u32>().unwrap())
             .unwrap();
         let local_tz = *Local::now().offset();
@@ -459,7 +472,7 @@ mod tests {
         let metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: Some(DayOneLocation {
                 region: Some(DayOneRegion {
                     center: LongLat {
@@ -484,7 +497,7 @@ mod tests {
         let metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: Some(DayOneLocation {
                 region: Some(DayOneRegion {
                     center: LongLat {
@@ -509,7 +522,7 @@ mod tests {
         let metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: Some(DayOneLocation {
                 region: Some(DayOneRegion {
                     center: LongLat {
@@ -545,7 +558,7 @@ mod tests {
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: Some(DayOneLocation {
                 region: Some(DayOneRegion {
                     center: LongLat {
@@ -593,7 +606,7 @@ mod tests {
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
@@ -640,7 +653,7 @@ mod tests {
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
@@ -687,7 +700,7 @@ mod tests {
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
@@ -727,7 +740,7 @@ mod tests {
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
-            entry_date: "2025-01-02T03:04:56Z".to_string(),
+            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
@@ -760,7 +773,7 @@ mod tests {
 
         let metadata = MetadataEntry::new(
             "# 1 // Some raw text\nSome body".to_string(),
-            "2025-01-02T03:04:56Z".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             Some(loc),
             vec![
                 "APs".to_string(),
