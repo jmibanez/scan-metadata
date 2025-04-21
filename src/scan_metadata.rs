@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::{debug, error, LevelFilter};
+use log::{error, warn, LevelFilter};
 use regex::Regex;
 use rexiv2::LogLevel;
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
@@ -111,7 +111,7 @@ fn match_files_to_entries(
     metadata_entries: Vec<MetadataEntry>,
     overwrite: bool,
     dryrun: bool,
-) {
+) -> (usize, usize, usize) {
     let mut sorted_filelist = filelist.clone();
     sorted_filelist.sort();
     let metadata_map: HashMap<_, _> = metadata_entries
@@ -119,7 +119,7 @@ fn match_files_to_entries(
         .map(|e| (e.frame_count(), e))
         .collect();
 
-    let entry_filename_matcher = Regex::new("(\\d{1,2})$").unwrap();
+    let entry_filename_matcher = Regex::new("(([1-9])|([1-9][0-9]))$").unwrap();
     let mut process_count = 0;
     let opt = ExifProcessorOptions {
         dryrun,
@@ -138,17 +138,12 @@ fn match_files_to_entries(
                     process_count += 1;
                 }
             } else {
-                debug!("Did not find metadata entry for frame {}", scan_frame_count);
+                warn!("Did not find metadata entry for frame {}", scan_frame_count);
             }
         }
     }
 
-    cli_message!(
-        "Processed {}/{} scan(s); found {} metadata entries.",
-        process_count,
-        filelist.len(),
-        metadata_entries.len()
-    );
+    (process_count, filelist.len(), metadata_entries.len())
 }
 
 pub fn scan_metadata() -> Result<(), ProgramError> {
@@ -181,7 +176,7 @@ pub fn scan_metadata() -> Result<(), ProgramError> {
         &get_default_processor()
     };
 
-    match_files_to_entries(
+    let (process_count, file_count, metadata_count) = match_files_to_entries(
         proc,
         args.filelist,
         metadata_entries,
@@ -189,5 +184,123 @@ pub fn scan_metadata() -> Result<(), ProgramError> {
         args.dryrun,
     );
 
+    cli_message!(
+        "Processed {}/{} scan(s); found {} metadata entries.",
+        process_count,
+        file_count,
+        metadata_count
+    );
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use chrono::DateTime;
+
+    use super::*;
+    use crate::exif::ExifTag;
+
+    struct TestExifProcessor {}
+    impl ExifProcessor for TestExifProcessor {
+        fn write_out_exif(&self, _: &Path, _: &[ExifTag], _: &ExifProcessorOptions) -> bool {
+            true
+        }
+    }
+
+    fn test_proc() -> impl ExifProcessor {
+        TestExifProcessor {}
+    }
+
+    #[test]
+    fn should_match_base_case_filenames() {
+        let metadata = MetadataEntry::fake(
+            "1".to_string(),
+            "# 1 // Some raw text\nSome body".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
+        );
+        let filelist = vec![Path::new("/tmp/test/hp5cp160_001.tif").to_path_buf()];
+        let metadata_entries = vec![metadata];
+        let proc = &test_proc();
+
+        let (process_count, file_count, metadata_count) =
+            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+        assert_eq!(1, process_count, "Should have matched against 1 file");
+        assert_eq!(1, file_count, "Should have seen 1 file to process");
+        assert_eq!(1, metadata_count, "Should have 1 metadata entry");
+    }
+
+    #[test]
+    fn should_match_two_digit_framecount_filenames() {
+        let metadata = MetadataEntry::fake(
+            "12".to_string(),
+            "# 12 // Some raw text\nSome body".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
+        );
+        let filelist = vec![Path::new("/tmp/test/hp5cp160_012.tif").to_path_buf()];
+        let metadata_entries = vec![metadata];
+        let proc = &test_proc();
+
+        let (process_count, file_count, metadata_count) =
+            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+        assert_eq!(1, process_count, "Should have matched against 1 file");
+        assert_eq!(1, file_count, "Should have seen 1 file to process");
+        assert_eq!(1, metadata_count, "Should have 1 metadata entry");
+    }
+
+    #[test]
+    fn should_match_filenames_with_noise_digits_in_middle() {
+        let metadata = MetadataEntry::fake(
+            "12".to_string(),
+            "# 12 // Some raw text\nSome body".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
+        );
+        let filelist = vec![Path::new("/tmp/test/hp5cp160_001_012.tif").to_path_buf()];
+        let metadata_entries = vec![metadata];
+        let proc = &test_proc();
+
+        let (process_count, file_count, metadata_count) =
+            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+        assert_eq!(1, process_count, "Should have matched against 1 file");
+        assert_eq!(1, file_count, "Should have seen 1 file to process");
+        assert_eq!(1, metadata_count, "Should have 1 metadata entry");
+    }
+
+    #[test]
+    fn should_match_filenames_with_only_digits() {
+        let metadata = MetadataEntry::fake(
+            "12".to_string(),
+            "# 12 // Some raw text\nSome body".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
+        );
+        let filelist = vec![Path::new("/tmp/test/000001012.tif").to_path_buf()];
+        let metadata_entries = vec![metadata];
+        let proc = &test_proc();
+
+        let (process_count, file_count, metadata_count) =
+            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+        assert_eq!(1, process_count, "Should have matched against 1 file");
+        assert_eq!(1, file_count, "Should have seen 1 file to process");
+        assert_eq!(1, metadata_count, "Should have 1 metadata entry");
+    }
+
+    #[test]
+    fn should_match_filenames_digits_only_consider_last_two_digits() {
+        let metadata = MetadataEntry::fake(
+            "12".to_string(),
+            "# 12 // Some raw text\nSome body".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
+        );
+        let filelist = vec![Path::new("/tmp/test/000001912.tif").to_path_buf()];
+        let metadata_entries = vec![metadata];
+        let proc = &test_proc();
+
+        let (process_count, file_count, metadata_count) =
+            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+        assert_eq!(1, process_count, "Should have matched against 1 file");
+        assert_eq!(1, file_count, "Should have seen 1 file to process");
+        assert_eq!(1, metadata_count, "Should have 1 metadata entry");
+    }
 }

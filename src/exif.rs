@@ -454,7 +454,7 @@ mod tests {
 
         assert_eq!(
             Vec::from([
-                "-q",
+                "-v4",
                 "-overwrite_original_in_place",
                 "-Foo=bar",
                 "-Hey=hey",
@@ -473,7 +473,7 @@ mod tests {
 
         assert_eq!(
             Vec::from([
-                "-q",
+                "-v4",
                 "-overwrite_original_in_place",
                 "-Foo=bar",
                 "-Hey=hey",
@@ -491,7 +491,7 @@ mod tests {
         );
 
         assert_eq!(
-            Vec::from(["-q", "-Foo=bar", "-Hey=hey", "-SomeInt=42", "/test/path"]),
+            Vec::from(["-v4", "-Foo=bar", "-Hey=hey", "-SomeInt=42", "/test/path"]),
             proc.to_exiftool_cmd_line(
                 Path::new("/test/path"),
                 &exif_tags,
@@ -516,7 +516,7 @@ mod tests {
 
         assert_eq!(
             Vec::from([
-                "-q",
+                "-v4",
                 "-Foo=bar",
                 "-Hey=hey",
                 "-SomeInt=42",

@@ -117,6 +117,17 @@ fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
 }
 
 impl MetadataEntry {
+    pub fn fake(frame_count: String, text: String, entry_date: DateTime<FixedOffset>) -> Self {
+        MetadataEntry {
+            frame_count,
+            text,
+            entry_date,
+            location: None,
+            entry_tags: Vec::new(),
+            exif_tags: Vec::new(),
+        }
+    }
+
     fn new(
         raw_text: String,
         entry_date: DateTime<FixedOffset>,
@@ -486,6 +497,12 @@ pub struct CameraProfileMap {
 }
 
 impl CameraProfileMap {
+    pub fn empty() -> Self {
+        CameraProfileMap {
+            cameras: HashMap::new(),
+        }
+    }
+
     fn new(maybe_camera_profiles: Option<Vec<CameraLensProfile>>) -> Self {
         match maybe_camera_profiles {
             Some(camera_profiles) => {

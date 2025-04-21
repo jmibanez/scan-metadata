@@ -1,10 +1,27 @@
 // Macro for automatically quieting printlns
 
-use std::sync::RwLock;
-
 use log::LevelFilter;
 
-static _LOG_LEVEL: RwLock<LevelFilter> = RwLock::new(LevelFilter::Info);
+use std::sync::RwLock;
+
+#[cfg(test)]
+#[ctor::ctor]
+fn init_logger_for_test() {
+    use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
+
+    TermLogger::init(
+        LevelFilter::Debug,
+        Config::default(),
+        TerminalMode::Stderr,
+        ColorChoice::Auto,
+    );
+}
+
+static _LOG_LEVEL: RwLock<LevelFilter> = if cfg!(test) {
+    RwLock::new(LevelFilter::Debug)
+} else {
+    RwLock::new(LevelFilter::Info)
+};
 
 pub fn set_log_level(level: LevelFilter) {
     *(_LOG_LEVEL.write().unwrap()) = level;
