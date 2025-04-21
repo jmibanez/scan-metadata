@@ -1,0 +1,8 @@
+bin.name = "scan-metadata"
+args = "-q test-export.zip test-img0040.jpg"
+status = "success"
+fs.sandbox = true
+fs.base = "data"
+
+stdout = '''
+'''
