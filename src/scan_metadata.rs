@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use crate::cli_message;
 use crate::exif::{
-    get_default_processor, get_experimental_processor, ExifProcessor, ExifProcessorOptions,
+    get_default_processor, get_legacy_processor, ExifProcessor, ExifProcessorOptions,
 };
 use crate::models::{to_metadata_entries, CameraLensProfile, DayOneExport, MetadataEntry};
 use crate::util;
@@ -35,9 +35,9 @@ struct Args {
     #[arg(long)]
     dryrun: bool,
 
-    /// EXPERIMENTAL: Use pure Rust EXIF implementation
+    /// Legacy: Fork exiftool instead of using internal EXIF processor
     #[arg(long)]
-    experimental_exif: bool,
+    legacy_exif: bool,
 
     /// Use YAML with camera and lens profiles
     #[arg(short, long)]
@@ -170,8 +170,8 @@ pub fn scan_metadata() -> Result<(), ProgramError> {
 
     let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json, camera_profiles);
 
-    let proc: &dyn ExifProcessor = if args.experimental_exif {
-        &get_experimental_processor()
+    let proc: &dyn ExifProcessor = if args.legacy_exif {
+        &get_legacy_processor()
     } else {
         &get_default_processor()
     };

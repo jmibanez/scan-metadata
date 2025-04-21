@@ -249,9 +249,9 @@ impl MetadataOperations for Metadata {
     }
 }
 
-struct ExperimentalExifProcessor {}
+struct Rexiv2ExifProcessor {}
 
-impl ExperimentalExifProcessor {
+impl Rexiv2ExifProcessor {
     fn apply_exif_tag(&self, meta: &dyn MetadataOperations, tag: &ExifTag) {
         let tag_name = translate_tag_to_exiv(tag.name.as_str());
         let result = match &tag.value {
@@ -370,7 +370,7 @@ impl ExperimentalExifProcessor {
     }
 }
 
-impl ExifProcessor for ExperimentalExifProcessor {
+impl ExifProcessor for Rexiv2ExifProcessor {
     fn write_out_exif(
         &self,
         filepath: &Path,
@@ -378,7 +378,7 @@ impl ExifProcessor for ExperimentalExifProcessor {
         options: &ExifProcessorOptions,
     ) -> bool {
         if !options.dryrun {
-            cli_message!("EXPERIMENTAL Updating tags for {}", filepath.display());
+            cli_message!("Updating tags for {}", filepath.display());
             let meta = Metadata::new_from_path(filepath).unwrap();
 
             self.handle_special_case_tags(&meta, exif_tags);
@@ -419,18 +419,18 @@ impl ExifProcessor for ExperimentalExifProcessor {
                 }
             }
         } else {
-            cli_message!("EXPERIMENTAL Would have updated {}", filepath.display());
+            cli_message!("Would have updated {}", filepath.display());
             true
         }
     }
 }
 
 pub fn get_default_processor() -> impl ExifProcessor {
-    ExifToolProcessor {}
+    Rexiv2ExifProcessor {}
 }
 
-pub fn get_experimental_processor() -> impl ExifProcessor {
-    ExperimentalExifProcessor {}
+pub fn get_legacy_processor() -> impl ExifProcessor {
+    ExifToolProcessor {}
 }
 
 #[cfg(test)]
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn rexiv2_processor_apply_exif_tag_base_case() {
-        let proc = ExperimentalExifProcessor {};
+        let proc = Rexiv2ExifProcessor {};
         let mut mock_meta = MockMetadataOperations::new();
 
         mock_meta
@@ -556,7 +556,7 @@ mod tests {
 
     #[test]
     fn rexiv2_processor_apply_exif_tag_on_translated_string_tag() {
-        let proc = ExperimentalExifProcessor {};
+        let proc = Rexiv2ExifProcessor {};
         let mut mock_meta = MockMetadataOperations::new();
 
         mock_meta
@@ -575,7 +575,7 @@ mod tests {
 
     #[test]
     fn rexiv2_processor_ignore_regular_tags_in_handle_special_case_tags() {
-        let proc = ExperimentalExifProcessor {};
+        let proc = Rexiv2ExifProcessor {};
         let mut mock_meta = MockMetadataOperations::new();
 
         let foo_tag = (-1.234).to_exif_tag("Foo");
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn rexiv2_processor_special_casing_ignore_gps_tags_if_either_missing() {
-        let proc = ExperimentalExifProcessor {};
+        let proc = Rexiv2ExifProcessor {};
         let mut mock_meta = MockMetadataOperations::new();
 
         mock_meta.expect_set_gps_info().never();
@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn rexiv2_processor_handle_special_cased_gps_tags() {
-        let proc = ExperimentalExifProcessor {};
+        let proc = Rexiv2ExifProcessor {};
         let mut mock_meta = MockMetadataOperations::new();
 
         mock_meta
@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn rexiv2_processor_special_casing_ignore_lens_info_tag_when_missing_some() {
-        let proc = ExperimentalExifProcessor {};
+        let proc = Rexiv2ExifProcessor {};
         let mut mock_meta = MockMetadataOperations::new();
 
         mock_meta.expect_set_gps_info().never();
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn rexiv2_processor_handle_special_cased_lens_info_tags() {
-        let proc = ExperimentalExifProcessor {};
+        let proc = Rexiv2ExifProcessor {};
         let mut mock_meta = MockMetadataOperations::new();
 
         mock_meta

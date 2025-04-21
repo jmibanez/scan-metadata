@@ -18,7 +18,7 @@ Options:
       --debug                Turn on debug logging
   -i, --inplace              Modify scans in place
       --dryrun               Dry run; show what would be done to the scans
-      --experimental-exif    EXPERIMENTAL: Use pure Rust EXIF implementation
+      --legacy-exif          Legacy: Fork exiftool instead of using internal EXIF processor
   -p, --profiles <PROFILES>  Use YAML with camera and lens profiles
   -h, --help                 Print help
 
