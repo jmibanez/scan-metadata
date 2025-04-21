@@ -155,7 +155,6 @@ fn match_files_to_entries(
 fn scan_metadata() -> Result<(), ProgramError> {
     let args = Args::parse();
 
-    let level: LevelFilter;
     if args.quiet {
         rexiv2::set_log_level(LogLevel::MUTE);
         util::set_log_level(LevelFilter::Off);
@@ -163,7 +162,7 @@ fn scan_metadata() -> Result<(), ProgramError> {
         rexiv2::set_log_level(LogLevel::WARN);
         util::set_log_level(LevelFilter::Debug);
     }
-    level = util::get_log_level();
+    let level = util::get_log_level();
 
     let _ = TermLogger::init(
         level,
