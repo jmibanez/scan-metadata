@@ -20,7 +20,7 @@ struct Args {
     quiet: bool,
 
     /// Turn on debug logging
-    #[arg(long)]
+    #[arg(long, conflicts_with = "quiet")]
     debug: bool,
 
     /// Use YAML with camera and lens profiles
