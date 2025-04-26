@@ -5,18 +5,21 @@ use regex::Regex;
 use rexiv2::LogLevel;
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 use thiserror::Error;
-use zip::ZipArchive;
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
-use crate::cli_message;
-use crate::exif::{
+use scan_metadata::cli_message;
+use scan_metadata::exif::{
     get_default_processor, get_legacy_processor, ExifProcessor, ExifProcessorOptions,
 };
-use crate::models::{to_metadata_entries, CameraLensProfile, DayOneExport, MetadataEntry};
-use crate::util;
+use scan_metadata::models::{
+    dayone_export_zip_to_json, to_metadata_entries, CameraLensProfile, MetadataEntry,
+    MetadataReadError,
+};
+use scan_metadata::util;
 
 const PROJECT_QUALIFER: &str = "com";
 const PROJECT_ORGANIZATION: &str = "jmibanez";
@@ -60,41 +63,6 @@ struct Args {
 pub enum ProgramError {
     #[error("Invalid metadata")]
     MetadataError(#[from] MetadataReadError),
-}
-
-#[derive(Error, Debug)]
-pub enum MetadataReadError {
-    #[error("Can't open file: {0}")]
-    FileError(#[from] std::io::Error),
-
-    #[error("Not a valid ZIP file: {0}")]
-    ZipFileError(#[from] zip::result::ZipError),
-
-    #[error("Malformed JSON data in export: {0}")]
-    JsonError(#[from] serde_json::Error),
-
-    #[error("Malformed YAML data in camera profiles: {0}")]
-    YamlError(#[from] serde_yaml::Error),
-
-    #[error("Malformed version for JSON export, expected '1.0' got '{0}'")]
-    InvalidVersionError(String),
-}
-
-fn dayone_export_zip_to_json(
-    dayone_export_zip: PathBuf,
-) -> Result<DayOneExport, MetadataReadError> {
-    let f = File::open(dayone_export_zip)?;
-    let mut zip = ZipArchive::new(f)?;
-    let result = zip.by_name("Journal.json")?;
-    let json: DayOneExport = serde_json::from_reader(result)?;
-
-    if json.metadata.version != "1.0" {
-        Err(MetadataReadError::InvalidVersionError(
-            json.metadata.version.to_string(),
-        ))
-    } else {
-        Ok(json)
-    }
 }
 
 fn read_camera_profiles_fallback_to_prefs(
@@ -169,7 +137,7 @@ fn match_files_to_entries(
     (process_count, filelist.len(), metadata_entries.len())
 }
 
-pub fn scan_metadata() -> Result<(), ProgramError> {
+fn scan_metadata() -> Result<(), ProgramError> {
     let args = Args::parse();
 
     if args.quiet {
@@ -217,6 +185,17 @@ pub fn scan_metadata() -> Result<(), ProgramError> {
     Ok(())
 }
 
+fn main() -> ExitCode {
+    let result = scan_metadata();
+    match result {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(ProgramError::MetadataError(e)) => {
+            error!("Could not read metadata for scans: {}", e);
+            ExitCode::from(2)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -224,7 +203,7 @@ mod tests {
     use chrono::DateTime;
 
     use super::*;
-    use crate::exif::ExifTag;
+    use scan_metadata::exif::ExifTag;
 
     struct TestExifProcessor {}
     impl ExifProcessor for TestExifProcessor {

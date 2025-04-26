@@ -3,10 +3,30 @@ use chrono_tz::Tz;
 use log::{debug, warn};
 use regex::Regex;
 use serde::Deserialize;
+use thiserror::Error;
+use zip::ZipArchive;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, path::PathBuf};
 
 use crate::exif::{ExifTag, ExifTagTrait};
+
+#[derive(Error, Debug)]
+pub enum MetadataReadError {
+    #[error("Can't open file: {0}")]
+    FileError(#[from] std::io::Error),
+
+    #[error("Not a valid ZIP file: {0}")]
+    ZipFileError(#[from] zip::result::ZipError),
+
+    #[error("Malformed JSON data in export: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    #[error("Malformed YAML data in camera profiles: {0}")]
+    YamlError(#[from] serde_yaml::Error),
+
+    #[error("Malformed version for JSON export, expected '1.0' got '{0}'")]
+    InvalidVersionError(String),
+}
 
 #[derive(Deserialize)]
 pub struct DayOneExportMetadata {
@@ -57,6 +77,23 @@ struct DayOneExportEntry {
 pub struct DayOneExport {
     pub metadata: DayOneExportMetadata,
     entries: Vec<DayOneExportEntry>,
+}
+
+pub fn dayone_export_zip_to_json(
+    dayone_export_zip: PathBuf,
+) -> Result<DayOneExport, MetadataReadError> {
+    let f = File::open(dayone_export_zip)?;
+    let mut zip = ZipArchive::new(f)?;
+    let result = zip.by_name("Journal.json")?;
+    let json: DayOneExport = serde_json::from_reader(result)?;
+
+    if json.metadata.version != "1.0" {
+        Err(MetadataReadError::InvalidVersionError(
+            json.metadata.version.to_string(),
+        ))
+    } else {
+        Ok(json)
+    }
 }
 
 #[derive(Debug)]
