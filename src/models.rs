@@ -36,13 +36,13 @@ pub struct DayOneExportMetadata {
     pub version: String,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug)]
 struct LongLat {
     longitude: f64,
     latitude: f64,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug)]
 struct DayOneRegion {
     center: LongLat,
     radius: f32,
@@ -56,7 +56,7 @@ struct DayOneWeather {
     sunset_date: DateTime<FixedOffset>,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug)]
 struct DayOneLocation {
     region: Option<DayOneRegion>,
     country: Option<String>,
@@ -99,7 +99,7 @@ pub fn dayone_export_zip_to_json(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MetadataEntry {
     frame_count: String,
     text: String,
@@ -165,6 +165,7 @@ impl MetadataEntry {
             location: None,
             entry_tags: Vec::new(),
             exif_tags: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -188,6 +189,7 @@ impl MetadataEntry {
             location,
             entry_tags,
             exif_tags,
+            ..Default::default()
         };
         entry.populate_tags(maybe_weather_info, profiles);
 
@@ -523,8 +525,8 @@ mod tests {
                 administrative_area: Some("AdminArea".to_string()),
                 time_zone_name: Some("UTC".to_string()),
             }),
-            entry_tags: Vec::default(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
 
         assert_eq!("2025:01:02 03:04:59", metadata.munge_date_with_framecount());
@@ -548,8 +550,8 @@ mod tests {
                 administrative_area: Some("AdminArea".to_string()),
                 time_zone_name: Some("Australia/Sydney".to_string()),
             }),
-            entry_tags: Vec::default(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
 
         assert_eq!("2025:01:02 14:04:59", metadata.munge_date_with_framecount());
@@ -573,8 +575,8 @@ mod tests {
                 administrative_area: Some("AdminArea".to_string()),
                 time_zone_name: Some("Australia/Foo".to_string()),
             }),
-            entry_tags: Vec::default(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
 
         let local_tz = *Local::now().offset();
@@ -609,8 +611,8 @@ mod tests {
                 administrative_area: Some("AdminArea".to_string()),
                 time_zone_name: Some("Australia/Foo".to_string()),
             }),
-            entry_tags: Vec::default(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         metadata.populate_location_tags();
 
@@ -654,6 +656,7 @@ mod tests {
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         metadata.populate_from_entry_tags(None, &profiles);
         assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
@@ -690,6 +693,7 @@ mod tests {
             location: None,
             entry_tags: Vec::new(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
@@ -709,6 +713,7 @@ mod tests {
             location: None,
             entry_tags: Vec::new(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
@@ -728,6 +733,7 @@ mod tests {
             location: None,
             entry_tags: Vec::new(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
@@ -747,6 +753,7 @@ mod tests {
             location: None,
             entry_tags: Vec::new(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
@@ -766,6 +773,7 @@ mod tests {
             location: None,
             entry_tags: Vec::new(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
@@ -785,6 +793,7 @@ mod tests {
             location: None,
             entry_tags: Vec::new(),
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
@@ -813,6 +822,7 @@ mod tests {
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
@@ -845,6 +855,7 @@ mod tests {
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         metadata.populate_from_entry_tags(None, &profiles);
         assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
@@ -890,6 +901,7 @@ mod tests {
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         metadata.populate_from_entry_tags(None, &profiles);
         assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
@@ -928,6 +940,7 @@ mod tests {
             location: None,
             entry_tags: tags,
             exif_tags: Vec::new(),
+            ..Default::default()
         };
         metadata.populate_from_entry_tags(None, &profiles);
         assert!(!metadata.entry_tags.contains(&"35mm".to_string()));
