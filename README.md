@@ -24,3 +24,26 @@ Options:
   -h, --help                 Print help
 
 ```
+
+
+```
+$ split_rolls --help
+Usage: split_rolls [OPTIONS] <DAYONE_EXPORT_ZIP>
+
+Arguments:
+  <DAYONE_EXPORT_ZIP>  The path to the exported metadata, as a ZIP file
+
+Options:
+  -q, --quiet
+          Quiet; minimize output to errors
+      --debug
+          Turn on debug logging
+  -p, --profiles <PROFILES>
+          Use YAML with camera and lens profiles
+  -o, --output-directory <OUTPUT_DIRECTORY>
+          Directory to output per-roll ZIPs to (default, same directory as source export)
+  -h, --help
+          Print help
+
+```
+
