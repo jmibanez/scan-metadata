@@ -4,10 +4,11 @@ Scripts for managing film scan metadata
 A few scripts I've written to populate EXIF and related metadata on my film scans, including converting from my Day One journal where my bespoke Siri Shortcut writes entries to.
 
 
-To run:
+Utilities included:
+
 ```
-$ scan-metadata --help
-Usage: scan-metadata [OPTIONS] <DAYONE_EXPORT_ZIP> <FILELIST>...
+$ update_scan_exif --help
+Usage: update_scan_exif [OPTIONS] <DAYONE_EXPORT_ZIP> <FILELIST>...
 
 Arguments:
   <DAYONE_EXPORT_ZIP>  The path to the exported metadata, as a ZIP file

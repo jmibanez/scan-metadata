@@ -1,4 +1,4 @@
-bin.name = "scan-metadata"
+bin.name = "update_scan_exif"
 args = "--profiles invalid-profile.yaml test-export.zip 1"
 status = "failed"
 fs.sandbox = true

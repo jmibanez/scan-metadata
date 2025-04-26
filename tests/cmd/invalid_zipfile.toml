@@ -1,4 +1,4 @@
-bin.name = "scan-metadata"
+bin.name = "update_scan_exif"
 args = "invalid-content.zip 1"
 status = "failed"
 fs.sandbox = true

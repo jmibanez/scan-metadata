@@ -1,4 +1,4 @@
-bin.name = "scan-metadata"
+bin.name = "update_scan_exif"
 args = "-q test-export.zip test-img0040.jpg"
 status = "success"
 fs.sandbox = true

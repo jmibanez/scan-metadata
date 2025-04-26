@@ -137,7 +137,7 @@ fn match_files_to_entries(
     (process_count, filelist.len(), metadata_entries.len())
 }
 
-fn scan_metadata() -> Result<(), ProgramError> {
+fn update_scan_exif() -> Result<(), ProgramError> {
     let args = Args::parse();
 
     if args.quiet {
@@ -186,7 +186,7 @@ fn scan_metadata() -> Result<(), ProgramError> {
 }
 
 fn main() -> ExitCode {
-    let result = scan_metadata();
+    let result = update_scan_exif();
     match result {
         Ok(_) => ExitCode::SUCCESS,
         Err(ProgramError::MetadataError(e)) => {

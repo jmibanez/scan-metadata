@@ -1,4 +1,4 @@
-bin.name = "scan-metadata"
+bin.name = "update_scan_exif"
 args = "test-meta.zip"
 status = "failed"
 
@@ -6,7 +6,7 @@ stderr = '''
 error: the following required arguments were not provided:
   <FILELIST>...
 
-Usage: scan-metadata <DAYONE_EXPORT_ZIP> <FILELIST>...
+Usage: update_scan_exif <DAYONE_EXPORT_ZIP> <FILELIST>...
 
 For more information, try '--help'.
 '''
