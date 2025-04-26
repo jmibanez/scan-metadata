@@ -1,5 +1,4 @@
 use clap::Parser;
-use directories::ProjectDirs;
 use log::{LevelFilter, error, warn};
 use regex::Regex;
 use rexiv2::LogLevel;
@@ -7,23 +6,18 @@ use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 use thiserror::Error;
 
 use std::collections::HashMap;
-use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
+use scan_metadata::camera_profiles::read_camera_profiles_fallback_to_prefs;
 use scan_metadata::cli_message;
 use scan_metadata::exif::{
     ExifProcessor, ExifProcessorOptions, get_default_processor, get_legacy_processor,
 };
 use scan_metadata::models::{
-    CameraLensProfile, MetadataEntry, MetadataReadError, dayone_export_zip_to_json,
-    to_metadata_entries,
+    MetadataEntry, MetadataReadError, dayone_export_zip_to_json, to_metadata_entries,
 };
 use scan_metadata::util;
-
-const PROJECT_QUALIFER: &str = "com";
-const PROJECT_ORGANIZATION: &str = "jmibanez";
-const PROJECT_APPNAME: &str = "scan-metadata";
 
 #[derive(Parser)]
 struct Args {
@@ -63,37 +57,6 @@ struct Args {
 pub enum ProgramError {
     #[error("Invalid metadata")]
     MetadataError(#[from] MetadataReadError),
-}
-
-fn read_camera_profiles_fallback_to_prefs(
-    camera_profiles_file: Option<PathBuf>,
-) -> Result<Option<Vec<CameraLensProfile>>, MetadataReadError> {
-    match camera_profiles_file {
-        Some(file) => read_camera_profiles_yaml(file.as_path()),
-        None => {
-            if let Some(project) =
-                ProjectDirs::from(PROJECT_QUALIFER, PROJECT_ORGANIZATION, PROJECT_APPNAME)
-            {
-                let mut user_prefs_profiles = project.config_dir().to_path_buf();
-                user_prefs_profiles.push("camera_profiles.yaml");
-                if user_prefs_profiles.exists() {
-                    read_camera_profiles_yaml(user_prefs_profiles.as_path())
-                } else {
-                    Ok(None)
-                }
-            } else {
-                Ok(None)
-            }
-        }
-    }
-}
-
-fn read_camera_profiles_yaml(
-    camera_profiles_file: &Path,
-) -> Result<Option<Vec<CameraLensProfile>>, MetadataReadError> {
-    let f = File::open(camera_profiles_file)?;
-    let yaml = serde_yaml::from_reader(f)?;
-    Ok(Some(yaml))
 }
 
 fn match_files_to_entries(

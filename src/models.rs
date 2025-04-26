@@ -6,9 +6,12 @@ use serde::Deserialize;
 use thiserror::Error;
 use zip::ZipArchive;
 
-use std::{collections::HashMap, fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf};
 
-use crate::exif::{ExifTag, ExifTagTrait};
+use crate::{
+    camera_profiles::{CameraLensProfile, CameraProfileMap},
+    exif::{ExifTag, ExifTagTrait},
+};
 
 #[derive(Error, Debug)]
 pub enum MetadataReadError {
@@ -486,106 +489,12 @@ impl MetadataEntry {
     }
 }
 
-#[derive(Clone, Deserialize, Debug)]
-pub struct CameraLensProfile {
-    name: String,
-    tag: String,
-    exif_tags: Option<HashMap<String, String>>,
-    lens_profiles: Vec<LensProfile>,
-}
-
-#[derive(Clone, Deserialize, Debug)]
-pub struct LensProfile {
-    name: String,
-    tag: String,
-    min_focal_length_mm: u16,
-    max_focal_length_mm: u16,
-    // min_aperture: f32,
-    max_aperture_at_short: f32,
-    max_aperture_at_long: f32,
-
-    exif_tags: Option<HashMap<String, String>>,
-}
-
-#[derive(Debug)]
-struct CameraProfileMapEntry {
-    name: String,
-    lens_profiles: HashMap<String, LensProfile>,
-    exif_tags: Option<HashMap<String, String>>,
-}
-
-impl From<&CameraLensProfile> for CameraProfileMapEntry {
-    fn from(item: &CameraLensProfile) -> Self {
-        let lens_profiles_map: HashMap<_, _> = item
-            .lens_profiles
-            .iter()
-            .map(|p| (p.tag.clone(), p.clone()))
-            .collect();
-        CameraProfileMapEntry {
-            name: item.name.clone(),
-            lens_profiles: lens_profiles_map,
-            exif_tags: item.exif_tags.clone(),
-        }
-    }
-}
-
-pub struct CameraProfileMap {
-    cameras: HashMap<String, CameraProfileMapEntry>,
-}
-
-impl CameraProfileMap {
-    pub fn empty() -> Self {
-        CameraProfileMap {
-            cameras: HashMap::new(),
-        }
-    }
-
-    fn new(maybe_camera_profiles: Option<Vec<CameraLensProfile>>) -> Self {
-        match maybe_camera_profiles {
-            Some(camera_profiles) => {
-                let cameras: HashMap<_, _> = camera_profiles
-                    .iter()
-                    .map(|p| (p.tag.clone(), p.into()))
-                    .collect();
-                debug!("Loaded camera profiles: {:#?}", cameras);
-                CameraProfileMap { cameras }
-            }
-            None => CameraProfileMap {
-                cameras: HashMap::new(),
-            },
-        }
-    }
-
-    fn get_profile(
-        &self,
-        maybe_camera_tag: Option<String>,
-        maybe_lens_tag: Option<String>,
-    ) -> Option<(&CameraProfileMapEntry, &LensProfile)> {
-        if let (Some(camera_tag), Some(lens_tag)) = (maybe_camera_tag, maybe_lens_tag) {
-            if let Some(camera_profile) = self.cameras.get(&camera_tag) {
-                debug!(
-                    "    : Looking up lens profile for camera {}, {}",
-                    camera_tag, lens_tag
-                );
-                camera_profile
-                    .lens_profiles
-                    .get(&lens_tag)
-                    .map(|lens_profile| (camera_profile, lens_profile))
-            } else {
-                debug!("    : No matching camera profile: {}", camera_tag);
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
 
     use crate::exif::TagValue;
+    use std::collections::HashMap;
 
     use super::*;
 
@@ -737,9 +646,7 @@ mod tests {
             "unindexed".to_string(),
             "scanned".to_string(),
         ];
-        let profiles = CameraProfileMap {
-            cameras: HashMap::default(),
-        };
+        let profiles = CameraProfileMap::default();
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
@@ -898,9 +805,7 @@ mod tests {
             "unindexed".to_string(),
             "scanned".to_string(),
         ];
-        let profiles = CameraProfileMap {
-            cameras: HashMap::default(),
-        };
+        let profiles = CameraProfileMap::default();
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
@@ -932,9 +837,7 @@ mod tests {
             "unindexed".to_string(),
             "scanned".to_string(),
         ];
-        let profiles = CameraProfileMap {
-            cameras: HashMap::default(),
-        };
+        let profiles = CameraProfileMap::default();
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
@@ -979,9 +882,7 @@ mod tests {
             "unindexed".to_string(),
             "scanned".to_string(),
         ];
-        let profiles = CameraProfileMap {
-            cameras: HashMap::default(),
-        };
+        let profiles = CameraProfileMap::default();
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
@@ -1019,9 +920,7 @@ mod tests {
     #[test]
     fn when_populate_from_entry_tags_should_transform_film_type_tags() {
         let tags = vec!["120".to_string(), "35mm".to_string()];
-        let profiles = CameraProfileMap {
-            cameras: HashMap::default(),
-        };
+        let profiles = CameraProfileMap::default();
         let mut metadata = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
             frame_count: "59".to_string(),
@@ -1052,10 +951,7 @@ mod tests {
             administrative_area: Some("AdminArea".to_string()),
             time_zone_name: Some("UTC".to_string()),
         };
-        let profiles = CameraProfileMap {
-            cameras: HashMap::default(),
-        };
-
+        let profiles = CameraProfileMap::default();
         let metadata = MetadataEntry::new(
             "# 1 // Some raw text\nSome body".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
