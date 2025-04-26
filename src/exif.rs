@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use log::{debug, warn, LevelFilter};
+use log::{LevelFilter, debug, warn};
 use num::rational::Ratio;
 use rexiv2::{GpsInfo, Metadata};
 
@@ -168,7 +168,9 @@ impl ExifProcessor for ExifToolProcessor {
             cli_message!("Updating tags for {}", filepath.display());
             let maybe_proc = Command::new("exiftool").args(&args).spawn();
             if maybe_proc.is_err() {
-                panic!("ERROR: Cannot update scans; exiftool not found in PATH. exiftool must be installed first.");
+                panic!(
+                    "ERROR: Cannot update scans; exiftool not found in PATH. exiftool must be installed first."
+                );
             }
             let result = maybe_proc.unwrap().wait().unwrap();
             result.success()

@@ -1,6 +1,6 @@
 use clap::Parser;
 use directories::ProjectDirs;
-use log::{error, warn, LevelFilter};
+use log::{LevelFilter, error, warn};
 use regex::Regex;
 use rexiv2::LogLevel;
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
@@ -13,11 +13,11 @@ use std::process::ExitCode;
 
 use scan_metadata::cli_message;
 use scan_metadata::exif::{
-    get_default_processor, get_legacy_processor, ExifProcessor, ExifProcessorOptions,
+    ExifProcessor, ExifProcessorOptions, get_default_processor, get_legacy_processor,
 };
 use scan_metadata::models::{
-    dayone_export_zip_to_json, to_metadata_entries, CameraLensProfile, MetadataEntry,
-    MetadataReadError,
+    CameraLensProfile, MetadataEntry, MetadataReadError, dayone_export_zip_to_json,
+    to_metadata_entries,
 };
 use scan_metadata::util;
 

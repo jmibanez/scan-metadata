@@ -705,18 +705,26 @@ mod tests {
         };
         metadata.populate_location_tags();
 
-        assert!(metadata
-            .exif_tags
-            .contains(&(-56.78).to_exif_tag("GPSLatitude")));
-        assert!(metadata
-            .exif_tags
-            .contains(&(-12.34).to_exif_tag("GPSLongitude")));
-        assert!(metadata
-            .exif_tags
-            .contains(&"Country".to_exif_tag("Country")));
-        assert!(metadata
-            .exif_tags
-            .contains(&"AdminArea".to_exif_tag("State")));
+        assert!(
+            metadata
+                .exif_tags
+                .contains(&(-56.78).to_exif_tag("GPSLatitude"))
+        );
+        assert!(
+            metadata
+                .exif_tags
+                .contains(&(-12.34).to_exif_tag("GPSLongitude"))
+        );
+        assert!(
+            metadata
+                .exif_tags
+                .contains(&"Country".to_exif_tag("Country"))
+        );
+        assert!(
+            metadata
+                .exif_tags
+                .contains(&"AdminArea".to_exif_tag("State"))
+        );
     }
 
     #[test]
