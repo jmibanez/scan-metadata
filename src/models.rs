@@ -110,12 +110,20 @@ pub struct MetadataEntry {
 }
 
 fn parse_frame_count(text: &str) -> String {
-    text.lines()
+    let candidate: String = text
+        .lines()
         .next()
         .and_then(|header| header.split_whitespace().nth(1))
         .unwrap_or("0")
         .parse()
-        .unwrap()
+        .unwrap();
+
+    let candidate_maybe_number = candidate.parse::<u32>();
+    if candidate_maybe_number.is_ok() {
+        candidate
+    } else {
+        String::default()
+    }
 }
 
 mod json_date {
@@ -233,12 +241,16 @@ impl MetadataEntry {
             a
         });
 
-        let text_tag = text_sans_header.to_exif_tag("UserComment");
-        debug!(
-            "Frame {}: Found caption: {}",
-            self.frame_count, text_sans_header
-        );
-        self.exif_tags.push(text_tag);
+        if !text_sans_header.is_empty() {
+            let text_tag = text_sans_header.to_exif_tag("UserComment");
+            debug!(
+                "Frame {}: Found caption: {}",
+                self.frame_count, text_sans_header
+            );
+            self.exif_tags.push(text_tag);
+        } else {
+            debug!("Frame {}: No caption found", self.frame_count);
+        }
     }
 
     fn populate_location_tags(&mut self) {
@@ -456,10 +468,13 @@ impl MetadataEntry {
     const EXIF_DATE_FORMAT: &str = "%Y:%m:%d %H:%M:%S";
 
     fn munge_date_with_framecount(&self) -> String {
-        let munged_datetime = self
-            .entry_date
-            .with_second(self.frame_count.parse::<u32>().unwrap())
-            .unwrap();
+        let frame_count_maybe_number = self.frame_count.parse::<u32>();
+        let munged_datetime = if let Ok(frame_count_number) = frame_count_maybe_number {
+            self.entry_date.with_second(frame_count_number).unwrap()
+        } else {
+            self.entry_date
+        };
+
         let local_tz = *Local::now().offset();
         if let Some(location) = &self.location {
             if let Some(tz_name) = &location.time_zone_name {
@@ -989,5 +1004,43 @@ mod tests {
             TagValue::String("2025:01:02 03:04:01".to_string()),
             tag_map.get("DateTimeOriginal").unwrap().value
         );
+    }
+
+    #[test]
+    fn should_handle_creating_metadata_entry_on_leader_entry() {
+        let loc = DayOneLocation {
+            region: Some(DayOneRegion {
+                center: LongLat {
+                    longitude: -12.34,
+                    latitude: -56.78,
+                },
+                radius: 0.0,
+            }),
+            country: Some("Country".to_string()),
+            administrative_area: Some("AdminArea".to_string()),
+            time_zone_name: Some("UTC".to_string()),
+        };
+        let profiles = CameraProfileMap::default();
+        let metadata = MetadataEntry::new(
+            "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+            Some(loc),
+            Vec::default(),
+            None,
+            &profiles,
+        );
+        let result_exif_tags = metadata.exif_tags();
+        let tag_map: HashMap<_, _> = result_exif_tags
+            .iter()
+            .map(|t| (t.name.clone(), t))
+            .collect();
+
+        assert!(tag_map.contains_key("DateTimeOriginal"));
+        assert_eq!(
+            TagValue::String("2025:01:02 03:04:56".to_string()),
+            tag_map.get("DateTimeOriginal").unwrap().value
+        );
+
+        assert!(!tag_map.contains_key("UserComment"));
     }
 }
