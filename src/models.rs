@@ -99,13 +99,30 @@ pub fn dayone_export_zip_to_json(
     }
 }
 
+#[derive(Debug)]
+pub enum MetadataEntryType {
+    Leader(LeaderEntry),
+    Frame(FrameEntry),
+}
+
 #[derive(Debug, Default)]
 pub struct MetadataEntry {
-    frame_count: String,
     text: String,
     entry_date: DateTime<FixedOffset>,
     location: Option<DayOneLocation>,
-    entry_tags: Vec<String>,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct LeaderEntry {
+    entry: MetadataEntry,
+    emulsion_name: String,
+}
+
+#[derive(Debug, Default)]
+pub struct FrameEntry {
+    entry: MetadataEntry,
+    frame_count: String,
     exif_tags: Vec<ExifTag>,
 }
 
@@ -142,13 +159,13 @@ mod json_date {
 pub fn to_metadata_entries(
     json: DayOneExport,
     camera_profiles: Option<Vec<CameraLensProfile>>,
-) -> Vec<MetadataEntry> {
+) -> Vec<MetadataEntryType> {
     let profiles = CameraProfileMap::new(camera_profiles);
 
     json.entries
         .iter()
         .map(|e| {
-            MetadataEntry::new(
+            to_entry_type(
                 e.text.clone(),
                 e.creation_date,
                 e.location.clone(),
@@ -160,24 +177,191 @@ pub fn to_metadata_entries(
         .collect()
 }
 
+fn to_entry_type(
+    text: String,
+    entry_date: DateTime<FixedOffset>,
+    location: Option<DayOneLocation>,
+    tags: Vec<String>,
+    maybe_weather_info: Option<DayOneWeather>,
+    profiles: &CameraProfileMap,
+) -> MetadataEntryType {
+    let frame_count = parse_frame_count(&text);
+    if frame_count.is_empty() {
+        MetadataEntryType::Leader(LeaderEntry::new(
+            text,
+            entry_date,
+            tags,
+            location,
+            maybe_weather_info,
+        ))
+    } else {
+        MetadataEntryType::Frame(FrameEntry::new(
+            frame_count,
+            text,
+            entry_date,
+            location,
+            tags,
+            maybe_weather_info,
+            profiles,
+        ))
+    }
+}
+
+impl MetadataEntryType {
+    pub fn entry(&self) -> &MetadataEntry {
+        match self {
+            Self::Leader(leader) => &leader.entry,
+            Self::Frame(frame) => &frame.entry,
+        }
+    }
+}
+
+impl MetadataEntry {
+    fn new(
+        text: String,
+        entry_date: DateTime<FixedOffset>,
+        tags: Vec<String>,
+        location: Option<DayOneLocation>,
+        maybe_weather_info: Option<DayOneWeather>,
+    ) -> Self {
+        let text = text.replace("\\", "");
+        let mut tags = tags.clone();
+        tags.sort();
+        let mut entry = MetadataEntry {
+            text,
+            entry_date,
+            location,
+            tags,
+        };
+        if let Some(weather_info) = maybe_weather_info {
+            entry.populate_weather_info_tags(weather_info);
+        }
+
+        entry
+    }
+
+    pub fn camera_tag(&self) -> Option<&String> {
+        self.tags.iter().find(|t| t.starts_with("camera:"))
+    }
+
+    pub fn text(&self) -> &String {
+        &self.text
+    }
+
+    pub fn entry_date(&self) -> &DateTime<FixedOffset> {
+        &self.entry_date
+    }
+
+    pub fn tags(&self) -> &Vec<String> {
+        &self.tags
+    }
+
+    fn populate_weather_info_tags(&mut self, weather_info: DayOneWeather) {
+        debug!(
+            "entry_date: {}, sunrise: {}, sunset: {}",
+            self.entry_date, weather_info.sunrise_date, weather_info.sunset_date
+        );
+        if self.entry_date > weather_info.sunset_date {
+            // If more than 30 minutes after sunset, consider it "night"
+            let timedelta = self.entry_date - weather_info.sunset_date;
+            let timedelta_in_mins = timedelta.num_minutes();
+            debug!(
+                "after sunset, timedelta: {} timedelta_in_mins: {}",
+                timedelta, timedelta_in_mins
+            );
+            if timedelta_in_mins > 30 {
+                self.tags.push("night".to_string());
+            } else {
+                self.tags.push("dusk".to_string());
+            }
+        } else if self.entry_date > weather_info.sunrise_date {
+            // If 30 minutes or less before sunset, consider it "sunset"
+            let sunset_timedelta = weather_info.sunset_date - self.entry_date;
+            let sunset_timedelta_in_mins = sunset_timedelta.num_minutes();
+            debug!(
+                "after sunrise before sunset, sunset_timedelta_in_mins: {}",
+                sunset_timedelta_in_mins
+            );
+            if sunset_timedelta_in_mins <= 30 {
+                self.tags.push("sunset".to_string());
+            }
+
+            // If 30 minutes or less after sunrise, consider it "sunrise"
+            let sunrise_timedelta = self.entry_date - weather_info.sunrise_date;
+            let sunrise_timedelta_in_mins = sunrise_timedelta.num_minutes();
+            debug!(
+                "after sunrise before sunset, sunrise_timedelta_in_mins: {}",
+                sunrise_timedelta_in_mins
+            );
+            if sunrise_timedelta_in_mins <= 30 {
+                self.tags.push("sunrise".to_string());
+            }
+        } else {
+            // If 30 minutes or less before sunrise, consider it "dawn", else night
+            let sunrise_timedelta = weather_info.sunrise_date - self.entry_date;
+            let sunrise_timedelta_in_mins = sunrise_timedelta.num_minutes();
+            if sunrise_timedelta_in_mins > 30 {
+                self.tags.push("night".to_string());
+            } else {
+                self.tags.push("dawn".to_string());
+            }
+        }
+    }
+}
+
+impl LeaderEntry {
+    fn new(
+        text: String,
+        entry_date: DateTime<FixedOffset>,
+        tags: Vec<String>,
+        location: Option<DayOneLocation>,
+        maybe_weather_info: Option<DayOneWeather>,
+    ) -> Self {
+        let entry = MetadataEntry::new(text, entry_date, tags, location, maybe_weather_info);
+        let emulsion_name = LeaderEntry::extract_emulsion_name_from_leader_text(&entry.text);
+        debug!(
+            "Frame XX: Leader: Text: {} // Found emulsion: {}",
+            &entry.text, &emulsion_name
+        );
+
+        LeaderEntry {
+            entry,
+            emulsion_name,
+        }
+    }
+
+    fn extract_emulsion_name_from_leader_text(text: &str) -> String {
+        let leader_headline_text_matcher =
+            Regex::new("# (.*) - ((120)|(35mm)) (\\(.*\\))").unwrap();
+        if let Some(captures) = leader_headline_text_matcher.captures(text) {
+            return captures.get(1).unwrap().as_str().to_string();
+        }
+
+        String::default()
+    }
+
+    pub fn emulsion(&self) -> String {
+        self.emulsion_name.clone()
+    }
+}
+
 fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
     (aperture_fstop.log2() * 2.0).round_ties_even() as i8
 }
 
-impl MetadataEntry {
+impl FrameEntry {
     pub fn fake(frame_count: String, text: String, entry_date: DateTime<FixedOffset>) -> Self {
-        MetadataEntry {
+        let entry = MetadataEntry::new(text, entry_date, Vec::new(), None, None);
+        FrameEntry {
+            entry,
             frame_count,
-            text,
-            entry_date,
-            location: None,
-            entry_tags: Vec::new(),
             exif_tags: Vec::new(),
             ..Default::default()
         }
     }
 
     fn new(
+        frame_count: String,
         raw_text: String,
         entry_date: DateTime<FixedOffset>,
         location: Option<DayOneLocation>,
@@ -186,22 +370,22 @@ impl MetadataEntry {
         profiles: &CameraProfileMap,
     ) -> Self {
         let exif_tags = Vec::new();
-        let mut entry_tags = raw_entry_tags.clone();
-        let text = raw_text.clone();
-        let frame_count = parse_frame_count(&text);
-        entry_tags.sort();
-        let mut entry = Self {
-            frame_count,
-            text,
+        let entry = MetadataEntry::new(
+            raw_text,
             entry_date,
+            raw_entry_tags,
             location,
-            entry_tags,
+            maybe_weather_info,
+        );
+        let mut frame_entry = Self {
+            entry,
+            frame_count,
             exif_tags,
             ..Default::default()
         };
-        entry.populate_tags(maybe_weather_info, profiles);
+        frame_entry.populate_tags(profiles);
 
-        entry
+        frame_entry
     }
 
     pub fn frame_count(&self) -> &String {
@@ -212,11 +396,11 @@ impl MetadataEntry {
         &self.exif_tags
     }
 
-    fn populate_tags(
-        &mut self,
-        maybe_weather_info: Option<DayOneWeather>,
-        profiles: &CameraProfileMap,
-    ) {
+    pub fn associated_camera(&self) -> Option<&String> {
+        self.entry.tags.iter().find(|t| t.starts_with("camera:"))
+    }
+
+    fn populate_tags(&mut self, profiles: &CameraProfileMap) {
         let munged_datetime = self.munge_date_with_framecount();
         let munged_datetime_tag = munged_datetime.to_exif_tag("DateTimeOriginal");
         debug!(
@@ -228,16 +412,16 @@ impl MetadataEntry {
         self.populate_caption_from_text();
 
         self.populate_location_tags();
-        self.populate_from_entry_tags(maybe_weather_info, profiles);
+        self.populate_from_entry_tags(profiles);
     }
 
     fn populate_caption_from_text(&mut self) {
-        let mut text_lines = self.text.lines();
+        let mut text_lines = self.entry.text.lines();
         text_lines.next();
         let text_sans_header = text_lines.fold(String::new(), |mut a, b| {
             a.reserve(b.len() + 1);
             a.push('\n');
-            a.push_str(&b.replace("\\", ""));
+            a.push_str(b);
             a
         });
 
@@ -254,7 +438,7 @@ impl MetadataEntry {
     }
 
     fn populate_location_tags(&mut self) {
-        if let Some(location) = &self.location {
+        if let Some(location) = &self.entry.location {
             if let Some(region) = &location.region {
                 let lat = region.center.latitude;
                 let lon = region.center.longitude;
@@ -290,18 +474,14 @@ impl MetadataEntry {
         }
     }
 
-    fn populate_from_entry_tags(
-        &mut self,
-        maybe_weather_info: Option<DayOneWeather>,
-        profiles: &CameraProfileMap,
-    ) {
+    fn populate_from_entry_tags(&mut self, profiles: &CameraProfileMap) {
         let shutter_tag_matcher = Regex::new("(1/)?\\d+s").unwrap();
         let lens_focal_length_matcher = Regex::new(r"(\d+)mm").unwrap();
 
         let mut found_camera_tag: Option<String> = None;
         let mut found_lens_tag: Option<String> = None;
 
-        self.entry_tags.retain(|tag| {
+        self.entry.tags.retain(|tag| {
             if shutter_tag_matcher.is_match(tag) {
                 let shutter_speed = tag.strip_suffix('s').unwrap();
                 self.exif_tags
@@ -344,7 +524,7 @@ impl MetadataEntry {
         self.populate_from_camera_profile(profiles, found_camera_tag, found_lens_tag);
 
         // Replace film type tags (120, 135) with prefixed tags
-        for tag in self.entry_tags.iter_mut() {
+        for tag in self.entry.tags.iter_mut() {
             if tag == "120" {
                 *tag = "film:120".to_string();
             }
@@ -353,64 +533,8 @@ impl MetadataEntry {
             }
         }
 
-        if let Some(weather_info) = maybe_weather_info {
-            self.populate_weather_info_tags(weather_info);
-        }
-
-        let keyword_tag = self.entry_tags.to_exif_tag("Keywords");
+        let keyword_tag = self.entry.tags.to_exif_tag("Keywords");
         self.exif_tags.push(keyword_tag);
-    }
-
-    fn populate_weather_info_tags(&mut self, weather_info: DayOneWeather) {
-        debug!(
-            "entry_date: {}, sunrise: {}, sunset: {}",
-            self.entry_date, weather_info.sunrise_date, weather_info.sunset_date
-        );
-        if self.entry_date > weather_info.sunset_date {
-            // If more than 30 minutes after sunset, consider it "night"
-            let timedelta = self.entry_date - weather_info.sunset_date;
-            let timedelta_in_mins = timedelta.num_minutes();
-            debug!(
-                "after sunset, timedelta: {} timedelta_in_mins: {}",
-                timedelta, timedelta_in_mins
-            );
-            if timedelta_in_mins > 30 {
-                self.entry_tags.push("night".to_string());
-            } else {
-                self.entry_tags.push("dusk".to_string());
-            }
-        } else if self.entry_date > weather_info.sunrise_date {
-            // If 30 minutes or less before sunset, consider it "sunset"
-            let sunset_timedelta = weather_info.sunset_date - self.entry_date;
-            let sunset_timedelta_in_mins = sunset_timedelta.num_minutes();
-            debug!(
-                "after sunrise before sunset, sunset_timedelta_in_mins: {}",
-                sunset_timedelta_in_mins
-            );
-            if sunset_timedelta_in_mins <= 30 {
-                self.entry_tags.push("sunset".to_string());
-            }
-
-            // If 30 minutes or less after sunrise, consider it "sunrise"
-            let sunrise_timedelta = self.entry_date - weather_info.sunrise_date;
-            let sunrise_timedelta_in_mins = sunrise_timedelta.num_minutes();
-            debug!(
-                "after sunrise before sunset, sunrise_timedelta_in_mins: {}",
-                sunrise_timedelta_in_mins
-            );
-            if sunrise_timedelta_in_mins <= 30 {
-                self.entry_tags.push("sunrise".to_string());
-            }
-        } else {
-            // If 30 minutes or less before sunrise, consider it "dawn", else night
-            let sunrise_timedelta = weather_info.sunrise_date - self.entry_date;
-            let sunrise_timedelta_in_mins = sunrise_timedelta.num_minutes();
-            if sunrise_timedelta_in_mins > 30 {
-                self.entry_tags.push("night".to_string());
-            } else {
-                self.entry_tags.push("dawn".to_string());
-            }
-        }
     }
 
     fn populate_from_camera_profile(
@@ -470,13 +594,16 @@ impl MetadataEntry {
     fn munge_date_with_framecount(&self) -> String {
         let frame_count_maybe_number = self.frame_count.parse::<u32>();
         let munged_datetime = if let Ok(frame_count_number) = frame_count_maybe_number {
-            self.entry_date.with_second(frame_count_number).unwrap()
+            self.entry
+                .entry_date
+                .with_second(frame_count_number)
+                .unwrap()
         } else {
-            self.entry_date
+            self.entry.entry_date
         };
 
         let local_tz = *Local::now().offset();
-        if let Some(location) = &self.location {
+        if let Some(location) = &self.entry.location {
             if let Some(tz_name) = &location.time_zone_name {
                 let maybe_tz = tz_name.parse::<Tz>();
                 let formatted_munged_datetime = match maybe_tz {
@@ -524,22 +651,25 @@ mod tests {
 
     #[test]
     fn should_munge_datetime_from_export() {
-        let metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: Some(DayOneLocation {
-                region: Some(DayOneRegion {
-                    center: LongLat {
-                        longitude: -12.34,
-                        latitude: -56.78,
-                    },
-                    radius: 0.0,
+        let metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: Some(DayOneLocation {
+                    region: Some(DayOneRegion {
+                        center: LongLat {
+                            longitude: -12.34,
+                            latitude: -56.78,
+                        },
+                        radius: 0.0,
+                    }),
+                    country: Some("Country".to_string()),
+                    administrative_area: Some("AdminArea".to_string()),
+                    time_zone_name: Some("UTC".to_string()),
                 }),
-                country: Some("Country".to_string()),
-                administrative_area: Some("AdminArea".to_string()),
-                time_zone_name: Some("UTC".to_string()),
-            }),
+                ..Default::default()
+            },
+            frame_count: "59".to_string(),
             exif_tags: Vec::new(),
             ..Default::default()
         };
@@ -549,22 +679,25 @@ mod tests {
 
     #[test]
     fn should_munge_datetime_from_export_with_given_timezone() {
-        let metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: Some(DayOneLocation {
-                region: Some(DayOneRegion {
-                    center: LongLat {
-                        longitude: -12.34,
-                        latitude: -56.78,
-                    },
-                    radius: 0.0,
+        let metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: Some(DayOneLocation {
+                    region: Some(DayOneRegion {
+                        center: LongLat {
+                            longitude: -12.34,
+                            latitude: -56.78,
+                        },
+                        radius: 0.0,
+                    }),
+                    country: Some("Country".to_string()),
+                    administrative_area: Some("AdminArea".to_string()),
+                    time_zone_name: Some("Australia/Sydney".to_string()),
                 }),
-                country: Some("Country".to_string()),
-                administrative_area: Some("AdminArea".to_string()),
-                time_zone_name: Some("Australia/Sydney".to_string()),
-            }),
+                ..Default::default()
+            },
+            frame_count: "59".to_string(),
             exif_tags: Vec::new(),
             ..Default::default()
         };
@@ -574,22 +707,25 @@ mod tests {
 
     #[test]
     fn should_munge_datetime_from_export_falling_back_to_local() {
-        let metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: Some(DayOneLocation {
-                region: Some(DayOneRegion {
-                    center: LongLat {
-                        longitude: -12.34,
-                        latitude: -56.78,
-                    },
-                    radius: 0.0,
+        let metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: Some(DayOneLocation {
+                    region: Some(DayOneRegion {
+                        center: LongLat {
+                            longitude: -12.34,
+                            latitude: -56.78,
+                        },
+                        radius: 0.0,
+                    }),
+                    country: Some("Country".to_string()),
+                    administrative_area: Some("AdminArea".to_string()),
+                    time_zone_name: Some("Australia/Foo".to_string()),
                 }),
-                country: Some("Country".to_string()),
-                administrative_area: Some("AdminArea".to_string()),
-                time_zone_name: Some("Australia/Foo".to_string()),
-            }),
+                ..Default::default()
+            },
+            frame_count: "59".to_string(),
             exif_tags: Vec::new(),
             ..Default::default()
         };
@@ -602,7 +738,7 @@ mod tests {
         assert_eq!(
             format!(
                 "{}",
-                expected_munged_entry_date.format(MetadataEntry::EXIF_DATE_FORMAT)
+                expected_munged_entry_date.format(FrameEntry::EXIF_DATE_FORMAT)
             ),
             metadata.munge_date_with_framecount()
         );
@@ -610,22 +746,25 @@ mod tests {
 
     #[test]
     fn should_populate_location_tags() {
-        let mut metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: Some(DayOneLocation {
-                region: Some(DayOneRegion {
-                    center: LongLat {
-                        longitude: -12.34,
-                        latitude: -56.78,
-                    },
-                    radius: 0.0,
+        let mut metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: Some(DayOneLocation {
+                    region: Some(DayOneRegion {
+                        center: LongLat {
+                            longitude: -12.34,
+                            latitude: -56.78,
+                        },
+                        radius: 0.0,
+                    }),
+                    country: Some("Country".to_string()),
+                    administrative_area: Some("AdminArea".to_string()),
+                    time_zone_name: Some("Australia/Foo".to_string()),
                 }),
-                country: Some("Country".to_string()),
-                administrative_area: Some("AdminArea".to_string()),
-                time_zone_name: Some("Australia/Foo".to_string()),
-            }),
+                ..Default::default()
+            },
+            frame_count: "59".to_string(),
             exif_tags: Vec::new(),
             ..Default::default()
         };
@@ -664,20 +803,22 @@ mod tests {
             "scanned".to_string(),
         ];
         let profiles = CameraProfileMap::default();
-        let mut metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
+        let mut metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: None,
+                tags,
+            },
             frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: None,
-            entry_tags: tags,
             exif_tags: Vec::new(),
             ..Default::default()
         };
-        metadata.populate_from_entry_tags(None, &profiles);
-        assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
-        assert!(!metadata.entry_tags.contains(&"scanned".to_string()));
-        assert!(!metadata.entry_tags.contains(&"f/2".to_string()));
-        assert!(!metadata.entry_tags.contains(&"1/500s".to_string()));
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry.tags.contains(&"unindexed".to_string()));
+        assert!(!metadata.entry.tags.contains(&"scanned".to_string()));
+        assert!(!metadata.entry.tags.contains(&"f/2".to_string()));
+        assert!(!metadata.entry.tags.contains(&"1/500s".to_string()));
 
         let tag_map: HashMap<_, _> = metadata
             .exif_tags
@@ -701,122 +842,104 @@ mod tests {
 
     #[test]
     fn should_populate_weather_info_tags_dawn() {
-        let mut metadata = MetadataEntry {
+        let mut entry = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-01T18:34:56Z").unwrap(),
             location: None,
-            entry_tags: Vec::new(),
-            exif_tags: Vec::new(),
-            ..Default::default()
+            tags: Vec::new(),
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        metadata.populate_weather_info_tags(weather_info);
-        assert_eq!(1, metadata.entry_tags.len());
-        assert!(metadata.entry_tags.contains(&"dawn".to_string()))
+        entry.populate_weather_info_tags(weather_info);
+        assert_eq!(1, entry.tags.len());
+        assert!(entry.tags.contains(&"dawn".to_string()))
     }
 
     #[test]
     fn should_populate_weather_info_tags_dusk() {
-        let mut metadata = MetadataEntry {
+        let mut entry = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
             location: None,
-            entry_tags: Vec::new(),
-            exif_tags: Vec::new(),
-            ..Default::default()
+            tags: Vec::new(),
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        metadata.populate_weather_info_tags(weather_info);
-        assert_eq!(1, metadata.entry_tags.len());
-        assert!(metadata.entry_tags.contains(&"dusk".to_string()))
+        entry.populate_weather_info_tags(weather_info);
+        assert_eq!(1, entry.tags.len());
+        assert!(entry.tags.contains(&"dusk".to_string()))
     }
 
     #[test]
     fn should_populate_weather_info_tags_sunrise() {
-        let mut metadata = MetadataEntry {
+        let mut entry = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-01T19:29:00Z").unwrap(),
             location: None,
-            entry_tags: Vec::new(),
-            exif_tags: Vec::new(),
-            ..Default::default()
+            tags: Vec::new(),
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        metadata.populate_weather_info_tags(weather_info);
-        assert_eq!(1, metadata.entry_tags.len());
-        assert!(metadata.entry_tags.contains(&"sunrise".to_string()))
+        entry.populate_weather_info_tags(weather_info);
+        assert_eq!(1, entry.tags.len());
+        assert!(entry.tags.contains(&"sunrise".to_string()))
     }
 
     #[test]
     fn should_populate_weather_info_tags_sunset() {
-        let mut metadata = MetadataEntry {
+        let mut entry = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T07:00:56Z").unwrap(),
             location: None,
-            entry_tags: Vec::new(),
-            exif_tags: Vec::new(),
-            ..Default::default()
+            tags: Vec::new(),
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        metadata.populate_weather_info_tags(weather_info);
-        assert_eq!(1, metadata.entry_tags.len());
-        assert!(metadata.entry_tags.contains(&"sunset".to_string()))
+        entry.populate_weather_info_tags(weather_info);
+        assert_eq!(1, entry.tags.len());
+        assert!(entry.tags.contains(&"sunset".to_string()))
     }
 
     #[test]
     fn should_populate_weather_info_tags_night_after_sunset() {
-        let mut metadata = MetadataEntry {
+        let mut entry = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T08:01:00Z").unwrap(),
             location: None,
-            entry_tags: Vec::new(),
-            exif_tags: Vec::new(),
-            ..Default::default()
+            tags: Vec::new(),
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        metadata.populate_weather_info_tags(weather_info);
-        assert_eq!(1, metadata.entry_tags.len());
-        assert!(metadata.entry_tags.contains(&"night".to_string()))
+        entry.populate_weather_info_tags(weather_info);
+        assert_eq!(1, entry.tags.len());
+        assert!(entry.tags.contains(&"night".to_string()))
     }
 
     #[test]
     fn should_populate_weather_info_tags_night_before_sunrise() {
-        let mut metadata = MetadataEntry {
+        let mut entry = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-01T18:00:00Z").unwrap(),
             location: None,
-            entry_tags: Vec::new(),
-            exif_tags: Vec::new(),
-            ..Default::default()
+            tags: Vec::new(),
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        metadata.populate_weather_info_tags(weather_info);
-        assert_eq!(1, metadata.entry_tags.len());
-        assert!(metadata.entry_tags.contains(&"night".to_string()))
+        entry.populate_weather_info_tags(weather_info);
+        assert_eq!(1, entry.tags.len());
+        assert!(entry.tags.contains(&"night".to_string()))
     }
 
     #[test]
@@ -829,27 +952,23 @@ mod tests {
             "unindexed".to_string(),
             "scanned".to_string(),
         ];
-        let profiles = CameraProfileMap::default();
-        let mut metadata = MetadataEntry {
+        let mut entry = MetadataEntry {
             text: "# 1 // Some raw text\nSome body".to_string(),
-            frame_count: "59".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
             location: None,
-            entry_tags: tags,
-            exif_tags: Vec::new(),
-            ..Default::default()
+            tags,
         };
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        metadata.populate_from_entry_tags(Some(weather_info), &profiles);
-        assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
-        assert!(!metadata.entry_tags.contains(&"scanned".to_string()));
-        assert!(!metadata.entry_tags.contains(&"f/2".to_string()));
-        assert!(!metadata.entry_tags.contains(&"1/500s".to_string()));
+        entry.populate_weather_info_tags(weather_info);
+        assert!(entry.tags.contains(&"unindexed".to_string()));
+        assert!(entry.tags.contains(&"scanned".to_string()));
+        assert!(entry.tags.contains(&"f/2".to_string()));
+        assert!(entry.tags.contains(&"1/500s".to_string()));
 
-        assert!(metadata.entry_tags.contains(&"dusk".to_string()));
+        assert!(entry.tags.contains(&"dusk".to_string()));
     }
 
     #[test]
@@ -863,20 +982,22 @@ mod tests {
             "scanned".to_string(),
         ];
         let profiles = CameraProfileMap::default();
-        let mut metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
+        let mut metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: None,
+                tags,
+            },
             frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: None,
-            entry_tags: tags,
             exif_tags: Vec::new(),
             ..Default::default()
         };
-        metadata.populate_from_entry_tags(None, &profiles);
-        assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
-        assert!(!metadata.entry_tags.contains(&"scanned".to_string()));
-        assert!(!metadata.entry_tags.contains(&"f/2".to_string()));
-        assert!(!metadata.entry_tags.contains(&"1/500s".to_string()));
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry.tags.contains(&"unindexed".to_string()));
+        assert!(!metadata.entry.tags.contains(&"scanned".to_string()));
+        assert!(!metadata.entry.tags.contains(&"f/2".to_string()));
+        assert!(!metadata.entry.tags.contains(&"1/500s".to_string()));
 
         let tag_map: HashMap<_, _> = metadata
             .exif_tags
@@ -909,20 +1030,22 @@ mod tests {
             "scanned".to_string(),
         ];
         let profiles = CameraProfileMap::default();
-        let mut metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
+        let mut metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: None,
+                tags,
+            },
             frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: None,
-            entry_tags: tags,
             exif_tags: Vec::new(),
             ..Default::default()
         };
-        metadata.populate_from_entry_tags(None, &profiles);
-        assert!(!metadata.entry_tags.contains(&"unindexed".to_string()));
-        assert!(!metadata.entry_tags.contains(&"scanned".to_string()));
-        assert!(!metadata.entry_tags.contains(&"f/2".to_string()));
-        assert!(!metadata.entry_tags.contains(&"1/500s".to_string()));
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry.tags.contains(&"unindexed".to_string()));
+        assert!(!metadata.entry.tags.contains(&"scanned".to_string()));
+        assert!(!metadata.entry.tags.contains(&"f/2".to_string()));
+        assert!(!metadata.entry.tags.contains(&"1/500s".to_string()));
 
         let tag_map: HashMap<_, _> = metadata
             .exif_tags
@@ -948,21 +1071,23 @@ mod tests {
     fn when_populate_from_entry_tags_should_transform_film_type_tags() {
         let tags = vec!["120".to_string(), "35mm".to_string()];
         let profiles = CameraProfileMap::default();
-        let mut metadata = MetadataEntry {
-            text: "# 1 // Some raw text\nSome body".to_string(),
+        let mut metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: None,
+                tags,
+            },
             frame_count: "59".to_string(),
-            entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            location: None,
-            entry_tags: tags,
             exif_tags: Vec::new(),
             ..Default::default()
         };
-        metadata.populate_from_entry_tags(None, &profiles);
-        assert!(!metadata.entry_tags.contains(&"35mm".to_string()));
-        assert!(metadata.entry_tags.contains(&"film:135".to_string()));
+        metadata.populate_from_entry_tags(&profiles);
+        assert!(!metadata.entry.tags.contains(&"35mm".to_string()));
+        assert!(metadata.entry.tags.contains(&"film:135".to_string()));
 
-        assert!(!metadata.entry_tags.contains(&"120".to_string()));
-        assert!(metadata.entry_tags.contains(&"film:120".to_string()));
+        assert!(!metadata.entry.tags.contains(&"120".to_string()));
+        assert!(metadata.entry.tags.contains(&"film:120".to_string()));
     }
 
     #[test]
@@ -980,7 +1105,7 @@ mod tests {
             time_zone_name: Some("UTC".to_string()),
         };
         let profiles = CameraProfileMap::default();
-        let metadata = MetadataEntry::new(
+        let metadata = to_entry_type(
             "# 1 // Some raw text\nSome body".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             Some(loc),
@@ -993,17 +1118,20 @@ mod tests {
             None,
             &profiles,
         );
-        let result_exif_tags = metadata.exif_tags();
-        let tag_map: HashMap<_, _> = result_exif_tags
-            .iter()
-            .map(|t| (t.name.clone(), t))
-            .collect();
+        assert!(matches!(metadata, MetadataEntryType::Frame(_)));
+        if let MetadataEntryType::Frame(metadata) = metadata {
+            let result_exif_tags = metadata.exif_tags();
+            let tag_map: HashMap<_, _> = result_exif_tags
+                .iter()
+                .map(|t| (t.name.clone(), t))
+                .collect();
 
-        assert!(tag_map.contains_key("DateTimeOriginal"));
-        assert_eq!(
-            TagValue::String("2025:01:02 03:04:01".to_string()),
-            tag_map.get("DateTimeOriginal").unwrap().value
-        );
+            assert!(tag_map.contains_key("DateTimeOriginal"));
+            assert_eq!(
+                TagValue::String("2025:01:02 03:04:01".to_string()),
+                tag_map.get("DateTimeOriginal").unwrap().value
+            );
+        }
     }
 
     #[test]
@@ -1021,7 +1149,7 @@ mod tests {
             time_zone_name: Some("UTC".to_string()),
         };
         let profiles = CameraProfileMap::default();
-        let metadata = MetadataEntry::new(
+        let metadata = to_entry_type(
             "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             Some(loc),
@@ -1029,18 +1157,31 @@ mod tests {
             None,
             &profiles,
         );
-        let result_exif_tags = metadata.exif_tags();
-        let tag_map: HashMap<_, _> = result_exif_tags
-            .iter()
-            .map(|t| (t.name.clone(), t))
-            .collect();
+        assert!(matches!(metadata, MetadataEntryType::Leader(_)));
+    }
 
-        assert!(tag_map.contains_key("DateTimeOriginal"));
-        assert_eq!(
-            TagValue::String("2025:01:02 03:04:56".to_string()),
-            tag_map.get("DateTimeOriginal").unwrap().value
+    #[test]
+    fn should_capture_emulsion_name_on_new_leader_entry() {
+        let loc = DayOneLocation {
+            region: Some(DayOneRegion {
+                center: LongLat {
+                    longitude: -12.34,
+                    latitude: -56.78,
+                },
+                radius: 0.0,
+            }),
+            country: Some("Country".to_string()),
+            administrative_area: Some("AdminArea".to_string()),
+            time_zone_name: Some("UTC".to_string()),
+        };
+        let leader = LeaderEntry::new(
+            "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
+            DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+            Vec::new(),
+            Some(loc),
+            None,
         );
 
-        assert!(!tag_map.contains_key("UserComment"));
+        assert_eq!("HP5 Plus @ 1600".to_owned(), leader.emulsion_name);
     }
 }

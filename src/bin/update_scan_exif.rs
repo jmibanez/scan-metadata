@@ -15,7 +15,7 @@ use scan_metadata::exif::{
     ExifProcessor, ExifProcessorOptions, get_default_processor, get_legacy_processor,
 };
 use scan_metadata::models::{
-    MetadataEntry, MetadataReadError, dayone_export_zip_to_json, to_metadata_entries,
+    MetadataEntryType, MetadataReadError, dayone_export_zip_to_json, to_metadata_entries,
 };
 use scan_metadata::util;
 
@@ -62,7 +62,7 @@ pub enum ProgramError {
 fn match_files_to_entries(
     proc: &dyn ExifProcessor,
     filelist: Vec<PathBuf>,
-    metadata_entries: Vec<MetadataEntry>,
+    metadata_entries: Vec<MetadataEntryType>,
     overwrite: bool,
     dryrun: bool,
 ) -> (usize, usize, usize) {
@@ -70,6 +70,10 @@ fn match_files_to_entries(
     sorted_filelist.sort();
     let metadata_map: HashMap<_, _> = metadata_entries
         .iter()
+        .filter_map(|t| match t {
+            MetadataEntryType::Frame(e) => Some(e),
+            _ => None,
+        })
         .map(|e| (e.frame_count(), e))
         .collect();
 
@@ -122,7 +126,7 @@ fn update_scan_exif() -> Result<(), ProgramError> {
     let json = dayone_export_zip_to_json(args.dayone_export_zip)?;
     let camera_profiles = read_camera_profiles_fallback_to_prefs(args.profiles)?;
 
-    let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json, camera_profiles);
+    let metadata_entries = to_metadata_entries(json, camera_profiles);
 
     let proc: &dyn ExifProcessor = if args.legacy_exif {
         &get_legacy_processor()
@@ -166,7 +170,7 @@ mod tests {
     use chrono::DateTime;
 
     use super::*;
-    use scan_metadata::exif::ExifTag;
+    use scan_metadata::{exif::ExifTag, models::FrameEntry};
 
     struct TestExifProcessor {}
     impl ExifProcessor for TestExifProcessor {
@@ -181,13 +185,13 @@ mod tests {
 
     #[test]
     fn should_match_base_case_filenames() {
-        let metadata = MetadataEntry::fake(
+        let metadata = FrameEntry::fake(
             "1".to_string(),
             "# 1 // Some raw text\nSome body".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
         );
         let filelist = vec![Path::new("/tmp/test/hp5cp160_001.tif").to_path_buf()];
-        let metadata_entries = vec![metadata];
+        let metadata_entries = vec![MetadataEntryType::Frame(metadata)];
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
@@ -199,13 +203,13 @@ mod tests {
 
     #[test]
     fn should_match_two_digit_framecount_filenames() {
-        let metadata = MetadataEntry::fake(
+        let metadata = FrameEntry::fake(
             "12".to_string(),
             "# 12 // Some raw text\nSome body".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
         );
         let filelist = vec![Path::new("/tmp/test/hp5cp160_012.tif").to_path_buf()];
-        let metadata_entries = vec![metadata];
+        let metadata_entries = vec![MetadataEntryType::Frame(metadata)];
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
@@ -217,13 +221,13 @@ mod tests {
 
     #[test]
     fn should_match_filenames_with_noise_digits_in_middle() {
-        let metadata = MetadataEntry::fake(
+        let metadata = FrameEntry::fake(
             "12".to_string(),
             "# 12 // Some raw text\nSome body".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
         );
         let filelist = vec![Path::new("/tmp/test/hp5cp160_001_012.tif").to_path_buf()];
-        let metadata_entries = vec![metadata];
+        let metadata_entries = vec![MetadataEntryType::Frame(metadata)];
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
@@ -235,13 +239,13 @@ mod tests {
 
     #[test]
     fn should_match_filenames_with_only_digits() {
-        let metadata = MetadataEntry::fake(
+        let metadata = FrameEntry::fake(
             "12".to_string(),
             "# 12 // Some raw text\nSome body".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
         );
         let filelist = vec![Path::new("/tmp/test/000001012.tif").to_path_buf()];
-        let metadata_entries = vec![metadata];
+        let metadata_entries = vec![MetadataEntryType::Frame(metadata)];
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
@@ -253,13 +257,13 @@ mod tests {
 
     #[test]
     fn should_match_filenames_digits_only_consider_last_two_digits() {
-        let metadata = MetadataEntry::fake(
+        let metadata = FrameEntry::fake(
             "12".to_string(),
             "# 12 // Some raw text\nSome body".to_string(),
             DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
         );
         let filelist = vec![Path::new("/tmp/test/000001912.tif").to_path_buf()];
-        let metadata_entries = vec![metadata];
+        let metadata_entries = vec![MetadataEntryType::Frame(metadata)];
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =

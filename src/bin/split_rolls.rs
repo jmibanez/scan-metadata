@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use scan_metadata::models::{
-    MetadataEntry, MetadataReadError, dayone_export_zip_to_json, to_metadata_entries,
+    MetadataEntry, MetadataEntryType, MetadataReadError, dayone_export_zip_to_json,
+    to_metadata_entries,
 };
 use scan_metadata::{cli_message, util};
 
@@ -45,7 +46,7 @@ pub enum ProgramError {
 }
 
 fn split_metadata_entries_into_rolls(
-    metadata_entries: Vec<MetadataEntry>,
+    metadata_entries: Vec<MetadataEntryType>,
     output_directory: &Path,
 ) -> (u32, u32) {
     todo!()
@@ -78,7 +79,7 @@ fn split_rolls() -> Result<(), ProgramError> {
     let json = dayone_export_zip_to_json(args.dayone_export_zip)?;
     let camera_profiles = read_camera_profiles_fallback_to_prefs(args.profiles)?;
 
-    let metadata_entries: Vec<MetadataEntry> = to_metadata_entries(json, camera_profiles);
+    let metadata_entries = to_metadata_entries(json, camera_profiles);
 
     let output_directory = if let Some(specified_dir) = args.output_directory {
         specified_dir
