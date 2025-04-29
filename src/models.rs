@@ -66,7 +66,7 @@ struct DayOneLocation {
     time_zone_name: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
 struct DayOneExportEntry {
     location: Option<DayOneLocation>,
     tags: Vec<String>,
@@ -107,6 +107,7 @@ pub enum MetadataEntryType {
 
 #[derive(Debug, Default)]
 pub struct MetadataEntry {
+    entry: DayOneExportEntry,
     text: String,
     entry_date: DateTime<FixedOffset>,
     location: Option<DayOneLocation>,
@@ -164,50 +165,20 @@ pub fn to_metadata_entries(
 
     json.entries
         .iter()
-        .map(|e| {
-            to_entry_type(
-                e.text.clone(),
-                e.creation_date,
-                e.location.clone(),
-                e.tags.clone(),
-                e.weather.clone(),
-                &profiles,
-            )
-        })
+        .map(|e| MetadataEntryType::new(e, &profiles))
         .collect()
 }
 
-fn to_entry_type(
-    text: String,
-    entry_date: DateTime<FixedOffset>,
-    location: Option<DayOneLocation>,
-    tags: Vec<String>,
-    maybe_weather_info: Option<DayOneWeather>,
-    profiles: &CameraProfileMap,
-) -> MetadataEntryType {
-    let frame_count = parse_frame_count(&text);
-    if frame_count.is_empty() {
-        MetadataEntryType::Leader(LeaderEntry::new(
-            text,
-            entry_date,
-            tags,
-            location,
-            maybe_weather_info,
-        ))
-    } else {
-        MetadataEntryType::Frame(FrameEntry::new(
-            frame_count,
-            text,
-            entry_date,
-            location,
-            tags,
-            maybe_weather_info,
-            profiles,
-        ))
-    }
-}
-
 impl MetadataEntryType {
+    fn new(entry: &DayOneExportEntry, profiles: &CameraProfileMap) -> Self {
+        let frame_count = parse_frame_count(&entry.text);
+        if frame_count.is_empty() {
+            Self::Leader(LeaderEntry::new(entry))
+        } else {
+            Self::Frame(FrameEntry::new(frame_count, entry, profiles))
+        }
+    }
+
     pub fn entry(&self) -> &MetadataEntry {
         match self {
             Self::Leader(leader) => &leader.entry,
@@ -217,7 +188,31 @@ impl MetadataEntryType {
 }
 
 impl MetadataEntry {
-    fn new(
+    fn new(entry: &DayOneExportEntry) -> Self {
+        let text = entry.text.clone();
+        let entry_date = entry.creation_date;
+        let mut tags = entry.tags.clone();
+        let location = entry.location.clone();
+        let maybe_weather_info = entry.weather.clone();
+
+        let text = text.replace("\\", "");
+        tags.sort();
+
+        let mut entry = MetadataEntry {
+            entry: entry.clone(),
+            text,
+            entry_date,
+            location,
+            tags,
+        };
+        if let Some(weather_info) = maybe_weather_info {
+            entry.populate_weather_info_tags(weather_info);
+        }
+
+        entry
+    }
+
+    fn new_from_raw(
         text: String,
         entry_date: DateTime<FixedOffset>,
         tags: Vec<String>,
@@ -227,7 +222,9 @@ impl MetadataEntry {
         let text = text.replace("\\", "");
         let mut tags = tags.clone();
         tags.sort();
+
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text,
             entry_date,
             location,
@@ -310,14 +307,8 @@ impl MetadataEntry {
 }
 
 impl LeaderEntry {
-    fn new(
-        text: String,
-        entry_date: DateTime<FixedOffset>,
-        tags: Vec<String>,
-        location: Option<DayOneLocation>,
-        maybe_weather_info: Option<DayOneWeather>,
-    ) -> Self {
-        let entry = MetadataEntry::new(text, entry_date, tags, location, maybe_weather_info);
+    fn new(entry: &DayOneExportEntry) -> Self {
+        let entry = MetadataEntry::new(entry);
         let emulsion_name = LeaderEntry::extract_emulsion_name_from_leader_text(&entry.text);
         debug!(
             "Frame XX: Leader: Text: {} // Found emulsion: {}",
@@ -351,7 +342,7 @@ fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
 
 impl FrameEntry {
     pub fn fake(frame_count: String, text: String, entry_date: DateTime<FixedOffset>) -> Self {
-        let entry = MetadataEntry::new(text, entry_date, Vec::new(), None, None);
+        let entry = MetadataEntry::new_from_raw(text, entry_date, Vec::new(), None, None);
         FrameEntry {
             entry,
             frame_count,
@@ -360,23 +351,9 @@ impl FrameEntry {
         }
     }
 
-    fn new(
-        frame_count: String,
-        raw_text: String,
-        entry_date: DateTime<FixedOffset>,
-        location: Option<DayOneLocation>,
-        raw_entry_tags: Vec<String>,
-        maybe_weather_info: Option<DayOneWeather>,
-        profiles: &CameraProfileMap,
-    ) -> Self {
+    fn new(frame_count: String, entry: &DayOneExportEntry, profiles: &CameraProfileMap) -> Self {
         let exif_tags = Vec::new();
-        let entry = MetadataEntry::new(
-            raw_text,
-            entry_date,
-            raw_entry_tags,
-            location,
-            maybe_weather_info,
-        );
+        let entry = MetadataEntry::new(entry);
         let mut frame_entry = Self {
             entry,
             frame_count,
@@ -805,6 +782,7 @@ mod tests {
         let profiles = CameraProfileMap::default();
         let mut metadata = FrameEntry {
             entry: MetadataEntry {
+                entry: DayOneExportEntry::default(),
                 text: "# 1 // Some raw text\nSome body".to_string(),
                 entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
                 location: None,
@@ -843,6 +821,7 @@ mod tests {
     #[test]
     fn should_populate_weather_info_tags_dawn() {
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text: "# 1 // Some raw text\nSome body".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-01T18:34:56Z").unwrap(),
             location: None,
@@ -860,6 +839,7 @@ mod tests {
     #[test]
     fn should_populate_weather_info_tags_dusk() {
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text: "# 1 // Some raw text\nSome body".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
             location: None,
@@ -877,6 +857,7 @@ mod tests {
     #[test]
     fn should_populate_weather_info_tags_sunrise() {
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text: "# 1 // Some raw text\nSome body".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-01T19:29:00Z").unwrap(),
             location: None,
@@ -894,6 +875,7 @@ mod tests {
     #[test]
     fn should_populate_weather_info_tags_sunset() {
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text: "# 1 // Some raw text\nSome body".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T07:00:56Z").unwrap(),
             location: None,
@@ -911,6 +893,7 @@ mod tests {
     #[test]
     fn should_populate_weather_info_tags_night_after_sunset() {
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text: "# 1 // Some raw text\nSome body".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T08:01:00Z").unwrap(),
             location: None,
@@ -928,6 +911,7 @@ mod tests {
     #[test]
     fn should_populate_weather_info_tags_night_before_sunrise() {
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text: "# 1 // Some raw text\nSome body".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-01T18:00:00Z").unwrap(),
             location: None,
@@ -953,6 +937,7 @@ mod tests {
             "scanned".to_string(),
         ];
         let mut entry = MetadataEntry {
+            entry: DayOneExportEntry::default(),
             text: "# 1 // Some raw text\nSome body".to_string(),
             entry_date: DateTime::parse_from_rfc3339("2025-01-02T07:34:56Z").unwrap(),
             location: None,
@@ -984,6 +969,7 @@ mod tests {
         let profiles = CameraProfileMap::default();
         let mut metadata = FrameEntry {
             entry: MetadataEntry {
+                entry: DayOneExportEntry::default(),
                 text: "# 1 // Some raw text\nSome body".to_string(),
                 entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
                 location: None,
@@ -1032,6 +1018,7 @@ mod tests {
         let profiles = CameraProfileMap::default();
         let mut metadata = FrameEntry {
             entry: MetadataEntry {
+                entry: DayOneExportEntry::default(),
                 text: "# 1 // Some raw text\nSome body".to_string(),
                 entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
                 location: None,
@@ -1073,6 +1060,7 @@ mod tests {
         let profiles = CameraProfileMap::default();
         let mut metadata = FrameEntry {
             entry: MetadataEntry {
+                entry: DayOneExportEntry::default(),
                 text: "# 1 // Some raw text\nSome body".to_string(),
                 entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
                 location: None,
@@ -1105,19 +1093,20 @@ mod tests {
             time_zone_name: Some("UTC".to_string()),
         };
         let profiles = CameraProfileMap::default();
-        let metadata = to_entry_type(
-            "# 1 // Some raw text\nSome body".to_string(),
-            DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            Some(loc),
-            vec![
+        let entry = DayOneExportEntry {
+            text: "# 1 // Some raw text\nSome body".to_string(),
+            location: Some(loc),
+            tags: vec![
                 "APs".to_string(),
                 "f/8".to_string(),
                 "lens:50mm".to_string(),
                 "camera:fm3a".to_string(),
             ],
-            None,
-            &profiles,
-        );
+            creation_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+            weather: None,
+        };
+        let metadata = MetadataEntryType::new(&entry, &profiles);
+
         assert!(matches!(metadata, MetadataEntryType::Frame(_)));
         if let MetadataEntryType::Frame(metadata) = metadata {
             let result_exif_tags = metadata.exif_tags();
@@ -1149,14 +1138,15 @@ mod tests {
             time_zone_name: Some("UTC".to_string()),
         };
         let profiles = CameraProfileMap::default();
-        let metadata = to_entry_type(
-            "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
-            DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            Some(loc),
-            Vec::default(),
-            None,
-            &profiles,
-        );
+        let entry = DayOneExportEntry {
+            text: "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
+            creation_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+            location: Some(loc),
+            tags: Vec::default(),
+            weather: None,
+        };
+        let metadata = MetadataEntryType::new(&entry, &profiles);
+
         assert!(matches!(metadata, MetadataEntryType::Leader(_)));
     }
 
@@ -1174,13 +1164,14 @@ mod tests {
             administrative_area: Some("AdminArea".to_string()),
             time_zone_name: Some("UTC".to_string()),
         };
-        let leader = LeaderEntry::new(
-            "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
-            DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
-            Vec::new(),
-            Some(loc),
-            None,
-        );
+        let entry = DayOneExportEntry {
+            text: "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
+            creation_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+            tags: Vec::new(),
+            location: Some(loc),
+            weather: None,
+        };
+        let leader = LeaderEntry::new(&entry);
 
         assert_eq!("HP5 Plus @ 1600".to_owned(), leader.emulsion_name);
     }
