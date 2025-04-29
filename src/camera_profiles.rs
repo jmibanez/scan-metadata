@@ -102,7 +102,7 @@ impl CameraProfileMap {
                     .iter()
                     .map(|p| (p.tag.clone(), p.into()))
                     .collect();
-                debug!("Loaded camera profiles: {:#?}", cameras);
+                debug!("Loaded camera profiles: {cameras:#?}");
                 CameraProfileMap { cameras }
             }
             None => CameraProfileMap {
@@ -118,16 +118,13 @@ impl CameraProfileMap {
     ) -> Option<(&CameraProfileMapEntry, &LensProfile)> {
         if let (Some(camera_tag), Some(lens_tag)) = (maybe_camera_tag, maybe_lens_tag) {
             if let Some(camera_profile) = self.cameras.get(&camera_tag) {
-                debug!(
-                    "    : Looking up lens profile for camera {}, {}",
-                    camera_tag, lens_tag
-                );
+                debug!("    : Looking up lens profile for camera {camera_tag}, {lens_tag}",);
                 camera_profile
                     .lens_profiles
                     .get(&lens_tag)
                     .map(|lens_profile| (camera_profile, lens_profile))
             } else {
-                debug!("    : No matching camera profile: {}", camera_tag);
+                debug!("    : No matching camera profile: {camera_tag}");
                 None
             }
         } else {

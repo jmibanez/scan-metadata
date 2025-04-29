@@ -61,12 +61,12 @@ pub enum ProgramError {
 
 fn match_files_to_entries(
     proc: &dyn ExifProcessor,
-    filelist: Vec<PathBuf>,
-    metadata_entries: Vec<MetadataEntryType>,
+    filelist: &[PathBuf],
+    metadata_entries: &[MetadataEntryType],
     overwrite: bool,
     dryrun: bool,
 ) -> (usize, usize, usize) {
-    let mut sorted_filelist = filelist.clone();
+    let mut sorted_filelist = filelist.to_owned();
     sorted_filelist.sort();
     let metadata_map: HashMap<_, _> = metadata_entries
         .iter()
@@ -83,7 +83,7 @@ fn match_files_to_entries(
         dryrun,
         inplace: overwrite,
     };
-    for scan in sorted_filelist.iter() {
+    for scan in sorted_filelist {
         let filename_stem = scan.file_stem().unwrap().to_str().unwrap();
         if let Some(scan_frame_count_capture) = entry_filename_matcher.captures(filename_stem) {
             let scan_frame_count = scan_frame_count_capture
@@ -92,11 +92,11 @@ fn match_files_to_entries(
                 .as_str()
                 .to_string();
             if let Some(entry) = metadata_map.get(&scan_frame_count) {
-                if proc.write_out_exif(scan, entry.exif_tags(), &opt) {
+                if proc.write_out_exif(&scan, entry.exif_tags(), &opt) {
                     process_count += 1;
                 }
             } else {
-                warn!("Did not find metadata entry for frame {}", scan_frame_count);
+                warn!("Did not find metadata entry for frame {scan_frame_count}");
             }
         }
     }
@@ -126,7 +126,7 @@ fn update_scan_exif() -> Result<(), ProgramError> {
     let json = dayone_export_zip_to_json(args.dayone_export_zip)?;
     let camera_profiles = read_camera_profiles_fallback_to_prefs(args.profiles)?;
 
-    let metadata_entries = to_metadata_entries(json, camera_profiles);
+    let metadata_entries = to_metadata_entries(&json, camera_profiles);
 
     let proc: &dyn ExifProcessor = if args.legacy_exif {
         &get_legacy_processor()
@@ -136,17 +136,14 @@ fn update_scan_exif() -> Result<(), ProgramError> {
 
     let (process_count, file_count, metadata_count) = match_files_to_entries(
         proc,
-        args.filelist,
-        metadata_entries,
+        &args.filelist,
+        &metadata_entries,
         args.inplace,
         args.dryrun,
     );
 
     cli_message!(
-        "Processed {}/{} scan(s); found {} metadata entries.",
-        process_count,
-        file_count,
-        metadata_count
+        "Processed {process_count}/{file_count} scan(s); found {metadata_count} metadata entries."
     );
 
     Ok(())
@@ -155,9 +152,9 @@ fn update_scan_exif() -> Result<(), ProgramError> {
 fn main() -> ExitCode {
     let result = update_scan_exif();
     match result {
-        Ok(_) => ExitCode::SUCCESS,
+        Ok(()) => ExitCode::SUCCESS,
         Err(ProgramError::MetadataError(e)) => {
-            error!("Could not read metadata for scans: {}", e);
+            error!("Could not read metadata for scans: {e}");
             ExitCode::from(2)
         }
     }
@@ -195,7 +192,7 @@ mod tests {
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
-            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+            match_files_to_entries(proc, &filelist, &metadata_entries, false, true);
         assert_eq!(1, process_count, "Should have matched against 1 file");
         assert_eq!(1, file_count, "Should have seen 1 file to process");
         assert_eq!(1, metadata_count, "Should have 1 metadata entry");
@@ -213,7 +210,7 @@ mod tests {
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
-            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+            match_files_to_entries(proc, &filelist, &metadata_entries, false, true);
         assert_eq!(1, process_count, "Should have matched against 1 file");
         assert_eq!(1, file_count, "Should have seen 1 file to process");
         assert_eq!(1, metadata_count, "Should have 1 metadata entry");
@@ -231,7 +228,7 @@ mod tests {
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
-            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+            match_files_to_entries(proc, &filelist, &metadata_entries, false, true);
         assert_eq!(1, process_count, "Should have matched against 1 file");
         assert_eq!(1, file_count, "Should have seen 1 file to process");
         assert_eq!(1, metadata_count, "Should have 1 metadata entry");
@@ -249,7 +246,7 @@ mod tests {
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
-            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+            match_files_to_entries(proc, &filelist, &metadata_entries, false, true);
         assert_eq!(1, process_count, "Should have matched against 1 file");
         assert_eq!(1, file_count, "Should have seen 1 file to process");
         assert_eq!(1, metadata_count, "Should have 1 metadata entry");
@@ -267,7 +264,7 @@ mod tests {
         let proc = &test_proc();
 
         let (process_count, file_count, metadata_count) =
-            match_files_to_entries(proc, filelist, metadata_entries, false, true);
+            match_files_to_entries(proc, &filelist, &metadata_entries, false, true);
         assert_eq!(1, process_count, "Should have matched against 1 file");
         assert_eq!(1, file_count, "Should have seen 1 file to process");
         assert_eq!(1, metadata_count, "Should have 1 metadata entry");

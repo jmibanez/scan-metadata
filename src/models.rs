@@ -90,12 +90,12 @@ pub fn dayone_export_zip_to_json(
     let result = zip.by_name("Journal.json")?;
     let json: DayOneExport = serde_json::from_reader(result)?;
 
-    if json.metadata.version != "1.0" {
+    if json.metadata.version == "1.0" {
+        Ok(json)
+    } else {
         Err(MetadataReadError::InvalidVersionError(
             json.metadata.version.to_string(),
         ))
-    } else {
-        Ok(json)
     }
 }
 
@@ -158,7 +158,7 @@ mod json_date {
 }
 
 pub fn to_metadata_entries(
-    json: DayOneExport,
+    json: &DayOneExport,
     camera_profiles: Option<Vec<CameraLensProfile>>,
 ) -> Vec<MetadataEntryType> {
     let profiles = CameraProfileMap::new(camera_profiles);
@@ -195,7 +195,7 @@ impl MetadataEntry {
         let location = entry.location.clone();
         let maybe_weather_info = entry.weather.clone();
 
-        let text = text.replace("\\", "");
+        let text = text.replace('\\', "");
         tags.sort();
 
         let mut entry = MetadataEntry {
@@ -206,7 +206,7 @@ impl MetadataEntry {
             tags,
         };
         if let Some(weather_info) = maybe_weather_info {
-            entry.populate_weather_info_tags(weather_info);
+            entry.populate_weather_info_tags(&weather_info);
         }
 
         entry
@@ -215,12 +215,11 @@ impl MetadataEntry {
     fn new_from_raw(
         text: String,
         entry_date: DateTime<FixedOffset>,
-        tags: Vec<String>,
+        mut tags: Vec<String>,
         location: Option<DayOneLocation>,
         maybe_weather_info: Option<DayOneWeather>,
     ) -> Self {
-        let text = text.replace("\\", "");
-        let mut tags = tags.clone();
+        let text = text.replace('\\', "");
         tags.sort();
 
         let mut entry = MetadataEntry {
@@ -231,7 +230,7 @@ impl MetadataEntry {
             tags,
         };
         if let Some(weather_info) = maybe_weather_info {
-            entry.populate_weather_info_tags(weather_info);
+            entry.populate_weather_info_tags(&weather_info);
         }
 
         entry
@@ -253,7 +252,7 @@ impl MetadataEntry {
         &self.tags
     }
 
-    fn populate_weather_info_tags(&mut self, weather_info: DayOneWeather) {
+    fn populate_weather_info_tags(&mut self, weather_info: &DayOneWeather) {
         debug!(
             "entry_date: {}, sunrise: {}, sunset: {}",
             self.entry_date, weather_info.sunrise_date, weather_info.sunset_date
@@ -262,10 +261,7 @@ impl MetadataEntry {
             // If more than 30 minutes after sunset, consider it "night"
             let timedelta = self.entry_date - weather_info.sunset_date;
             let timedelta_in_mins = timedelta.num_minutes();
-            debug!(
-                "after sunset, timedelta: {} timedelta_in_mins: {}",
-                timedelta, timedelta_in_mins
-            );
+            debug!("after sunset, timedelta: {timedelta} timedelta_in_mins: {timedelta_in_mins}");
             if timedelta_in_mins > 30 {
                 self.tags.push("night".to_string());
             } else {
@@ -276,8 +272,7 @@ impl MetadataEntry {
             let sunset_timedelta = weather_info.sunset_date - self.entry_date;
             let sunset_timedelta_in_mins = sunset_timedelta.num_minutes();
             debug!(
-                "after sunrise before sunset, sunset_timedelta_in_mins: {}",
-                sunset_timedelta_in_mins
+                "after sunrise before sunset, sunset_timedelta_in_mins: {sunset_timedelta_in_mins}",
             );
             if sunset_timedelta_in_mins <= 30 {
                 self.tags.push("sunset".to_string());
@@ -287,8 +282,7 @@ impl MetadataEntry {
             let sunrise_timedelta = self.entry_date - weather_info.sunrise_date;
             let sunrise_timedelta_in_mins = sunrise_timedelta.num_minutes();
             debug!(
-                "after sunrise before sunset, sunrise_timedelta_in_mins: {}",
-                sunrise_timedelta_in_mins
+                "after sunrise before sunset, sunrise_timedelta_in_mins: {sunrise_timedelta_in_mins}",
             );
             if sunrise_timedelta_in_mins <= 30 {
                 self.tags.push("sunrise".to_string());
@@ -311,8 +305,8 @@ impl LeaderEntry {
         let entry = MetadataEntry::new(entry);
         let emulsion_name = LeaderEntry::extract_emulsion_name_from_leader_text(&entry.text);
         debug!(
-            "Frame XX: Leader: Text: {} // Found emulsion: {}",
-            &entry.text, &emulsion_name
+            "Frame XX: Leader: Text: {} // Found emulsion: {emulsion_name}",
+            &entry.text
         );
 
         LeaderEntry {
@@ -381,8 +375,8 @@ impl FrameEntry {
         let munged_datetime = self.munge_date_with_framecount();
         let munged_datetime_tag = munged_datetime.to_exif_tag("DateTimeOriginal");
         debug!(
-            "Frame {}: Munging date/time to {}",
-            self.frame_count, munged_datetime
+            "Frame {}: Munging date/time to {munged_datetime}",
+            self.frame_count
         );
         self.exif_tags.push(munged_datetime_tag);
 
@@ -402,15 +396,15 @@ impl FrameEntry {
             a
         });
 
-        if !text_sans_header.is_empty() {
+        if text_sans_header.is_empty() {
+            debug!("Frame {}: No caption found", self.frame_count);
+        } else {
             let text_tag = text_sans_header.to_exif_tag("UserComment");
             debug!(
-                "Frame {}: Found caption: {}",
-                self.frame_count, text_sans_header
+                "Frame {}: Found caption: {text_sans_header}",
+                self.frame_count
             );
             self.exif_tags.push(text_tag);
-        } else {
-            debug!("Frame {}: No caption found", self.frame_count);
         }
     }
 
@@ -429,23 +423,20 @@ impl FrameEntry {
                 self.exif_tags.push(gps_lon_tag);
                 self.exif_tags.push(gps_hpos_error_tag);
                 debug!(
-                    "Frame {}: Found GPS: lat {} lon {} hpos {}",
-                    self.frame_count, lat, lon, radius
+                    "Frame {}: Found GPS: lat {lat} lon {lon} hpos {radius}",
+                    self.frame_count
                 );
             }
 
             if let Some(country) = &location.country {
                 let country_tag = country.to_exif_tag("Country");
-                debug!("Frame {}: Found Country: {}", self.frame_count, country);
+                debug!("Frame {}: Found Country: {country}", self.frame_count);
                 self.exif_tags.push(country_tag);
             }
 
             if let Some(admin_area) = &location.administrative_area {
                 let admin_area_tag = admin_area.to_exif_tag("State");
-                debug!(
-                    "Frame {}: Found Admin Area: {}",
-                    self.frame_count, admin_area
-                );
+                debug!("Frame {}: Found Admin Area: {admin_area}", self.frame_count);
                 self.exif_tags.push(admin_area_tag);
             }
         }
@@ -463,24 +454,21 @@ impl FrameEntry {
                 let shutter_speed = tag.strip_suffix('s').unwrap();
                 self.exif_tags
                     .push(shutter_speed.to_exif_tag("ExposureTime"));
-                debug!(
-                    "Frame {}: Shutter speed: {}",
-                    self.frame_count, shutter_speed
-                );
+                debug!("Frame {}: Shutter speed: {shutter_speed}", self.frame_count);
                 return false;
             }
 
             if let Some(aperture_tag) = tag.strip_prefix("f/") {
                 if let Ok(f_number) = aperture_tag.parse::<f32>() {
                     self.exif_tags.push(f_number.to_exif_tag("FNumber"));
-                    debug!("Frame {}: Aperture: {}", self.frame_count, aperture_tag);
+                    debug!("Frame {}: Aperture: {aperture_tag}", self.frame_count);
                     return false;
                 }
             }
 
             if tag.starts_with("lens:") {
                 found_lens_tag = Some(tag.clone());
-                debug!("Frame {}: Found lens tag: {}", self.frame_count, tag);
+                debug!("Frame {}: Found lens tag: {tag}", self.frame_count);
                 if let Some(captures) = lens_focal_length_matcher.captures(tag) {
                     let focal_length = captures.get(1).unwrap().as_str().parse::<f64>().unwrap();
                     self.exif_tags.push(focal_length.to_exif_tag("FocalLength"));
@@ -501,7 +489,7 @@ impl FrameEntry {
         self.populate_from_camera_profile(profiles, found_camera_tag, found_lens_tag);
 
         // Replace film type tags (120, 135) with prefixed tags
-        for tag in self.entry.tags.iter_mut() {
+        for tag in &mut self.entry.tags {
             if tag == "120" {
                 *tag = "film:120".to_string();
             }
@@ -552,13 +540,13 @@ impl FrameEntry {
             self.exif_tags.push(max_aperture_at_long);
 
             if let Some(exif_tags) = &lens_profile.exif_tags {
-                for (tag, value) in exif_tags.iter() {
+                for (tag, value) in exif_tags {
                     let exif_tag = value.to_exif_tag(tag);
                     self.exif_tags.push(exif_tag);
                 }
             }
             if let Some(exif_tags) = &camera_profile.exif_tags {
-                for (tag, value) in exif_tags.iter() {
+                for (tag, value) in exif_tags {
                     let exif_tag = value.to_exif_tag(tag);
                     self.exif_tags.push(exif_tag);
                 }
@@ -585,19 +573,19 @@ impl FrameEntry {
                 let maybe_tz = tz_name.parse::<Tz>();
                 let formatted_munged_datetime = match maybe_tz {
                     Ok(tz) => {
-                        debug!("TZ => {}", tz);
+                        debug!("TZ => {tz}");
                         munged_datetime
                             .with_timezone(&tz)
                             .format(Self::EXIF_DATE_FORMAT)
                     }
                     Err(e) => {
-                        warn!("Couldn't find '{}', falling back to local: {}", tz_name, e);
+                        warn!("Couldn't find '{tz_name}', falling back to local: {e}");
                         munged_datetime
                             .with_timezone(&local_tz)
                             .format(Self::EXIF_DATE_FORMAT)
                     }
                 };
-                return format!("{}", formatted_munged_datetime);
+                return format!("{formatted_munged_datetime}");
             }
         }
 
@@ -831,7 +819,7 @@ mod tests {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        entry.populate_weather_info_tags(weather_info);
+        entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
         assert!(entry.tags.contains(&"dawn".to_string()))
     }
@@ -849,7 +837,7 @@ mod tests {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        entry.populate_weather_info_tags(weather_info);
+        entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
         assert!(entry.tags.contains(&"dusk".to_string()))
     }
@@ -867,7 +855,7 @@ mod tests {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        entry.populate_weather_info_tags(weather_info);
+        entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
         assert!(entry.tags.contains(&"sunrise".to_string()))
     }
@@ -885,7 +873,7 @@ mod tests {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        entry.populate_weather_info_tags(weather_info);
+        entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
         assert!(entry.tags.contains(&"sunset".to_string()))
     }
@@ -903,7 +891,7 @@ mod tests {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        entry.populate_weather_info_tags(weather_info);
+        entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
         assert!(entry.tags.contains(&"night".to_string()))
     }
@@ -921,7 +909,7 @@ mod tests {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        entry.populate_weather_info_tags(weather_info);
+        entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
         assert!(entry.tags.contains(&"night".to_string()))
     }
@@ -947,7 +935,7 @@ mod tests {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
         };
-        entry.populate_weather_info_tags(weather_info);
+        entry.populate_weather_info_tags(&weather_info);
         assert!(entry.tags.contains(&"unindexed".to_string()));
         assert!(entry.tags.contains(&"scanned".to_string()));
         assert!(entry.tags.contains(&"f/2".to_string()));

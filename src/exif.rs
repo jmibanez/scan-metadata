@@ -1,4 +1,3 @@
-use lazy_static::lazy_static;
 use log::{LevelFilter, debug, warn};
 use num::rational::Ratio;
 use rexiv2::{GpsInfo, Metadata};
@@ -6,6 +5,7 @@ use rexiv2::{GpsInfo, Metadata};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
+use std::sync::LazyLock;
 
 use crate::cli_message;
 use crate::util;
@@ -42,7 +42,7 @@ impl ExifTagTrait for i8 {
     fn to_exif_tag(&self, name: &str) -> ExifTag {
         ExifTag {
             name: name.to_string(),
-            value: TagValue::Numeric(*self as i32),
+            value: TagValue::Numeric(i32::from(*self)),
         }
     }
 }
@@ -60,7 +60,7 @@ impl ExifTagTrait for f32 {
     fn to_exif_tag(&self, name: &str) -> ExifTag {
         ExifTag {
             name: name.to_string(),
-            value: TagValue::Float(*self as f64),
+            value: TagValue::Float(f64::from(*self)),
         }
     }
 }
@@ -119,39 +119,38 @@ struct ExifToolProcessor {}
 
 impl ExifToolProcessor {
     fn to_exiftool_cmd_line(
-        &self,
         filepath: &Path,
         exif_tags: &[ExifTag],
         options: &ExifProcessorOptions,
     ) -> Vec<String> {
         let mut args = Vec::new();
 
-        if !util::is_log_level(LevelFilter::Debug) {
-            args.push("-q".to_string());
-        } else {
+        if util::is_log_level(LevelFilter::Debug) {
             args.push("-v4".to_string());
+        } else {
+            args.push("-q".to_string());
         }
 
         if options.inplace {
             args.push("-overwrite_original_in_place".to_string());
         }
 
-        for tag in exif_tags.iter() {
+        for tag in exif_tags {
             match &tag.value {
                 TagValue::String(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::Numeric(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::Rational(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::Float(v) => args.push(format!("-{}={}", tag.name, v)),
                 TagValue::List(l) => {
-                    for e in l.iter() {
+                    for e in l {
                         args.push(format!("-{}={}", tag.name, e));
                     }
                 }
-            };
+            }
         }
 
         args.push(filepath.to_str().unwrap().to_string());
-        debug!("Arguments to exiftool: {:#?}", args);
+        debug!("Arguments to exiftool: {args:#?}");
         args
     }
 }
@@ -163,8 +162,14 @@ impl ExifProcessor for ExifToolProcessor {
         exif_tags: &[ExifTag],
         options: &ExifProcessorOptions,
     ) -> bool {
-        let args = self.to_exiftool_cmd_line(filepath, exif_tags, options);
-        if !options.dryrun {
+        let args = ExifToolProcessor::to_exiftool_cmd_line(filepath, exif_tags, options);
+        if options.dryrun {
+            let cmd = args.join(" \\\n\t\t");
+            cli_message!("Would have updated {}", filepath.display());
+            cli_message!("\texiftool {}", cmd);
+            cli_message!();
+            true
+        } else {
             cli_message!("Updating tags for {}", filepath.display());
             let maybe_proc = Command::new("exiftool").args(&args).spawn();
             if maybe_proc.is_err() {
@@ -174,47 +179,39 @@ impl ExifProcessor for ExifToolProcessor {
             }
             let result = maybe_proc.unwrap().wait().unwrap();
             result.success()
-        } else {
-            let cmd = args.join(" \\\n\t\t");
-            cli_message!("Would have updated {}", filepath.display());
-            cli_message!("\texiftool {}", cmd);
-            cli_message!();
-            true
         }
     }
 }
 
-lazy_static! {
-    static ref TAG_TRANSLATIONS: HashMap<&'static str, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert("DateTimeOriginal", "Exif.Photo.DateTimeOriginal");
-        m.insert("GPSLatitude", "Exif.GPSInfo.GPSLatitude");
-        m.insert("GPSLongitude", "Exif.GPSInfo.GPSLongitude");
-        m.insert("GPSHPositioningError", "Exif.GPSInfo.GPSHPositioningError");
-        m.insert("Country", "Xmp.photoshop.Country");
-        m.insert("State", "Xmp.photoshop.State");
-        m.insert("FNumber", "Exif.Photo.FNumber");
-        m.insert("ExposureTime", "Exif.Photo.ExposureTime");
-        m.insert("MaxAperture", "Exif.Image.MaxApertureValue");
-        m.insert("FocalLength", "Exif.Photo.FocalLength");
-        m.insert("LensMake", "Xmp.exifEX.LensMake");
-        m.insert("LensModel", "Xmp.exifEX.LensModel");
-        m.insert("CameraLabel", "Xmp.xmpDM.cameraLabel");
-        m.insert("UserComment", "Exif.Photo.UserComment");
-        m.insert("Keywords", "Iptc.Application2.Keywords");
-        m
-    };
-    static ref SPECIAL_CASED_TAG: HashSet<&'static str> = {
-        let mut s = HashSet::new();
-        s.insert("MinFocalLength");
-        s.insert("MaxFocalLength");
-        s.insert("MaxApertureAtMinFocal");
-        s.insert("MaxApertureAtMaxFocal");
-        s.insert("GPSLatitude");
-        s.insert("GPSLongitude");
-        s
-    };
-}
+static TAG_TRANSLATIONS: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert("DateTimeOriginal", "Exif.Photo.DateTimeOriginal");
+    m.insert("GPSLatitude", "Exif.GPSInfo.GPSLatitude");
+    m.insert("GPSLongitude", "Exif.GPSInfo.GPSLongitude");
+    m.insert("GPSHPositioningError", "Exif.GPSInfo.GPSHPositioningError");
+    m.insert("Country", "Xmp.photoshop.Country");
+    m.insert("State", "Xmp.photoshop.State");
+    m.insert("FNumber", "Exif.Photo.FNumber");
+    m.insert("ExposureTime", "Exif.Photo.ExposureTime");
+    m.insert("MaxAperture", "Exif.Image.MaxApertureValue");
+    m.insert("FocalLength", "Exif.Photo.FocalLength");
+    m.insert("LensMake", "Xmp.exifEX.LensMake");
+    m.insert("LensModel", "Xmp.exifEX.LensModel");
+    m.insert("CameraLabel", "Xmp.xmpDM.cameraLabel");
+    m.insert("UserComment", "Exif.Photo.UserComment");
+    m.insert("Keywords", "Iptc.Application2.Keywords");
+    m
+});
+static SPECIAL_CASED_TAG: LazyLock<HashSet<&str>> = LazyLock::new(|| {
+    let mut s = HashSet::new();
+    s.insert("MinFocalLength");
+    s.insert("MaxFocalLength");
+    s.insert("MaxApertureAtMinFocal");
+    s.insert("MaxApertureAtMaxFocal");
+    s.insert("GPSLatitude");
+    s.insert("GPSLongitude");
+    s
+});
 
 fn translate_tag_to_exiv(tag_name: &str) -> &str {
     TAG_TRANSLATIONS.get(&tag_name).unwrap_or(&tag_name)
@@ -225,7 +222,7 @@ trait MetadataOperations {
     fn set_tag_string(&self, tag: &str, value: &str) -> rexiv2::Result<()>;
     fn set_tag_multiple_strings<'a>(&self, tag: &str, values: &'a [&'a str]) -> rexiv2::Result<()>;
     fn set_tag_numeric(&self, tag: &str, value: i32) -> rexiv2::Result<()>;
-    fn set_tag_rational(&self, tag: &str, value: &Ratio<i32>) -> rexiv2::Result<()>;
+    fn set_tag_rational(&self, tag: &str, value: Ratio<i32>) -> rexiv2::Result<()>;
     fn set_gps_info(&self, gps: &GpsInfo) -> rexiv2::Result<()>;
 }
 
@@ -242,8 +239,8 @@ impl MetadataOperations for Metadata {
         self.set_tag_numeric(tag, value)
     }
 
-    fn set_tag_rational(&self, tag: &str, value: &Ratio<i32>) -> rexiv2::Result<()> {
-        self.set_tag_rational(tag, value)
+    fn set_tag_rational(&self, tag: &str, value: Ratio<i32>) -> rexiv2::Result<()> {
+        self.set_tag_rational(tag, &value)
     }
 
     fn set_gps_info(&self, gps: &GpsInfo) -> rexiv2::Result<()> {
@@ -259,20 +256,20 @@ impl Rexiv2ExifProcessor {
         let result = match &tag.value {
             TagValue::String(v) => meta.set_tag_string(tag_name, v),
             TagValue::Numeric(v) => meta.set_tag_numeric(tag_name, *v),
-            TagValue::Rational(v) => meta.set_tag_rational(tag_name, v),
+            TagValue::Rational(v) => meta.set_tag_rational(tag_name, *v),
             TagValue::Float(v) => {
                 let ratio = Ratio::approximate_float(*v).unwrap();
-                meta.set_tag_rational(tag_name, &ratio)
+                meta.set_tag_rational(tag_name, ratio)
             }
             TagValue::List(l) => {
-                let l_str: Vec<&str> = l.iter().map(|e| e.as_str()).collect();
+                let l_str: Vec<&str> = l.iter().map(std::string::String::as_str).collect();
                 meta.set_tag_multiple_strings(tag_name, l_str.as_slice())
             }
         };
 
         if result.is_err() {
             let err = result.err().unwrap();
-            warn!("Error writing {}: {}", tag_name, err);
+            warn!("Error writing {tag_name}: {err}");
         }
     }
 
@@ -287,7 +284,7 @@ impl Rexiv2ExifProcessor {
         let mut maybe_max_aperture_at_min: Option<&String> = None;
         let mut maybe_max_aperture_at_max: Option<&String> = None;
 
-        for tag in exif_tags.iter() {
+        for tag in exif_tags {
             if tag.name == "MinFocalLength" {
                 if let TagValue::String(s) = &tag.value {
                     maybe_min_focal_length = Some(s);
@@ -360,14 +357,11 @@ impl Rexiv2ExifProcessor {
                 longitude,
                 altitude: 0.0,
             }) {
-                Ok(_) => (),
+                Ok(()) => (),
                 Err(e) => {
-                    warn!(
-                        "Could not set GPS info with values {} {}: {}",
-                        latitude, longitude, e
-                    );
+                    warn!("Could not set GPS info with values {latitude} {longitude}: {e}");
                 }
-            };
+            }
         }
     }
 }
@@ -379,13 +373,16 @@ impl ExifProcessor for Rexiv2ExifProcessor {
         exif_tags: &[ExifTag],
         options: &ExifProcessorOptions,
     ) -> bool {
-        if !options.dryrun {
+        if options.dryrun {
+            cli_message!("Would have updated {}", filepath.display());
+            true
+        } else {
             cli_message!("Updating tags for {}", filepath.display());
             let meta = Metadata::new_from_path(filepath).unwrap();
 
             self.handle_special_case_tags(&meta, exif_tags);
 
-            for tag in exif_tags.iter() {
+            for tag in exif_tags {
                 if SPECIAL_CASED_TAG.contains(tag.name.as_str()) {
                     continue;
                 }
@@ -420,9 +417,6 @@ impl ExifProcessor for Rexiv2ExifProcessor {
                     false
                 }
             }
-        } else {
-            cli_message!("Would have updated {}", filepath.display());
-            true
         }
     }
 }
@@ -451,7 +445,6 @@ mod tests {
 
     #[test]
     fn exiftool_processor_should_yield_correct_cmd_line() {
-        let proc = ExifToolProcessor {};
         let exif_tags = fake_exif_tags();
 
         assert_eq!(
@@ -463,7 +456,7 @@ mod tests {
                 "-SomeInt=42",
                 "/test/path"
             ]),
-            proc.to_exiftool_cmd_line(
+            ExifToolProcessor::to_exiftool_cmd_line(
                 Path::new("/test/path"),
                 &exif_tags,
                 &ExifProcessorOptions {
@@ -482,7 +475,7 @@ mod tests {
                 "-SomeInt=42",
                 "/test/path"
             ]),
-            proc.to_exiftool_cmd_line(
+            ExifToolProcessor::to_exiftool_cmd_line(
                 Path::new("/test/path"),
                 &exif_tags,
                 &ExifProcessorOptions {
@@ -494,7 +487,7 @@ mod tests {
 
         assert_eq!(
             Vec::from(["-v4", "-Foo=bar", "-Hey=hey", "-SomeInt=42", "/test/path"]),
-            proc.to_exiftool_cmd_line(
+            ExifToolProcessor::to_exiftool_cmd_line(
                 Path::new("/test/path"),
                 &exif_tags,
                 &ExifProcessorOptions {
@@ -507,7 +500,6 @@ mod tests {
 
     #[test]
     fn exiftool_processor_should_handle_various_value_types() {
-        let proc = ExifToolProcessor {};
         let mut exif_tags = Vec::new();
         exif_tags.push("bar".to_exif_tag("Foo"));
         exif_tags.push("hey".to_string().to_exif_tag("Hey"));
@@ -526,7 +518,7 @@ mod tests {
                 "-SomeRatio=3/7",
                 "/test/path"
             ]),
-            proc.to_exiftool_cmd_line(
+            ExifToolProcessor::to_exiftool_cmd_line(
                 Path::new("/test/path"),
                 &exif_tags,
                 &ExifProcessorOptions {
