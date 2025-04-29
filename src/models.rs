@@ -2,11 +2,14 @@ use chrono::{DateTime, FixedOffset, Local, Timelike};
 use chrono_tz::Tz;
 use log::{debug, warn};
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zip::ZipArchive;
 
-use std::{fs::File, path::PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     camera_profiles::{CameraLensProfile, CameraProfileMap},
@@ -31,32 +34,53 @@ pub enum MetadataReadError {
     InvalidVersionError(String),
 }
 
-#[derive(Deserialize)]
+#[derive(Error, Debug)]
+pub enum MetadataWriteError {
+    #[error("Can't open file: {0}")]
+    FileError(#[from] std::io::Error),
+
+    #[error("Not a valid ZIP file: {0}")]
+    ZipFileError(#[from] zip::result::ZipError),
+
+    #[error("Malformed JSON data in export: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    #[error("Malformed YAML data in camera profiles: {0}")]
+    YamlError(#[from] serde_yaml::Error),
+
+    #[error("Malformed version for JSON export, expected '1.0' got '{0}'")]
+    InvalidVersionError(String),
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct DayOneExportMetadata {
     pub version: String,
 }
 
-#[derive(Clone, Default, Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug, Serialize)]
 struct LongLat {
     longitude: f64,
     latitude: f64,
 }
 
-#[derive(Clone, Default, Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug, Serialize)]
 struct DayOneRegion {
     center: LongLat,
     radius: f32,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug, Serialize)]
 struct DayOneWeather {
     #[serde(rename = "sunriseDate", with = "json_date")]
     sunrise_date: DateTime<FixedOffset>,
     #[serde(rename = "sunsetDate", with = "json_date")]
     sunset_date: DateTime<FixedOffset>,
+
+    #[serde(flatten)]
+    _other: serde_json::Value,
 }
 
-#[derive(Clone, Default, Deserialize, Debug)]
+#[derive(Clone, Default, Deserialize, Debug, Serialize)]
 struct DayOneLocation {
     region: Option<DayOneRegion>,
     country: Option<String>,
@@ -64,9 +88,12 @@ struct DayOneLocation {
     administrative_area: Option<String>,
     #[serde(rename = "timeZoneName")]
     time_zone_name: Option<String>,
+
+    #[serde(flatten)]
+    _other: serde_json::Value,
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize, Default, Serialize)]
 struct DayOneExportEntry {
     location: Option<DayOneLocation>,
     tags: Vec<String>,
@@ -74,9 +101,12 @@ struct DayOneExportEntry {
     creation_date: DateTime<FixedOffset>,
     text: String,
     weather: Option<DayOneWeather>,
+
+    #[serde(flatten)]
+    _other: serde_json::Value,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct DayOneExport {
     pub metadata: DayOneExportMetadata,
     entries: Vec<DayOneExportEntry>,
@@ -146,7 +176,7 @@ fn parse_frame_count(text: &str) -> String {
 
 mod json_date {
     use chrono::{DateTime, FixedOffset};
-    use serde::{self, Deserialize, Deserializer};
+    use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<FixedOffset>, D::Error>
     where
@@ -154,6 +184,14 @@ mod json_date {
     {
         let s = String::deserialize(deserializer)?;
         DateTime::parse_from_rfc3339(&s).map_err(serde::de::Error::custom)
+    }
+
+    pub fn serialize<S>(datetime: &DateTime<FixedOffset>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let datetime_str = datetime.to_rfc3339();
+        serializer.serialize_str(&datetime_str)
     }
 }
 
@@ -631,6 +669,7 @@ mod tests {
                     country: Some("Country".to_string()),
                     administrative_area: Some("AdminArea".to_string()),
                     time_zone_name: Some("UTC".to_string()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             },
@@ -659,6 +698,7 @@ mod tests {
                     country: Some("Country".to_string()),
                     administrative_area: Some("AdminArea".to_string()),
                     time_zone_name: Some("Australia/Sydney".to_string()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             },
@@ -687,6 +727,7 @@ mod tests {
                     country: Some("Country".to_string()),
                     administrative_area: Some("AdminArea".to_string()),
                     time_zone_name: Some("Australia/Foo".to_string()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             },
@@ -726,6 +767,7 @@ mod tests {
                     country: Some("Country".to_string()),
                     administrative_area: Some("AdminArea".to_string()),
                     time_zone_name: Some("Australia/Foo".to_string()),
+                    ..Default::default()
                 }),
                 ..Default::default()
             },
@@ -818,6 +860,7 @@ mod tests {
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
+            ..Default::default()
         };
         entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
@@ -836,6 +879,7 @@ mod tests {
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
+            ..Default::default()
         };
         entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
@@ -854,6 +898,7 @@ mod tests {
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
+            ..Default::default()
         };
         entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
@@ -872,6 +917,7 @@ mod tests {
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
+            ..Default::default()
         };
         entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
@@ -890,6 +936,7 @@ mod tests {
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
+            ..Default::default()
         };
         entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
@@ -908,6 +955,7 @@ mod tests {
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
+            ..Default::default()
         };
         entry.populate_weather_info_tags(&weather_info);
         assert_eq!(1, entry.tags.len());
@@ -934,6 +982,7 @@ mod tests {
         let weather_info = DayOneWeather {
             sunrise_date: DateTime::parse_from_rfc3339("2025-01-01T19:00:00Z").unwrap(),
             sunset_date: DateTime::parse_from_rfc3339("2025-01-02T07:30:00Z").unwrap(),
+            ..Default::default()
         };
         entry.populate_weather_info_tags(&weather_info);
         assert!(entry.tags.contains(&"unindexed".to_string()));
@@ -1079,6 +1128,7 @@ mod tests {
             country: Some("Country".to_string()),
             administrative_area: Some("AdminArea".to_string()),
             time_zone_name: Some("UTC".to_string()),
+            ..Default::default()
         };
         let profiles = CameraProfileMap::default();
         let entry = DayOneExportEntry {
@@ -1092,6 +1142,7 @@ mod tests {
             ],
             creation_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
             weather: None,
+            ..Default::default()
         };
         let metadata = MetadataEntryType::new(&entry, &profiles);
 
@@ -1124,6 +1175,7 @@ mod tests {
             country: Some("Country".to_string()),
             administrative_area: Some("AdminArea".to_string()),
             time_zone_name: Some("UTC".to_string()),
+            ..Default::default()
         };
         let profiles = CameraProfileMap::default();
         let entry = DayOneExportEntry {
@@ -1132,6 +1184,7 @@ mod tests {
             location: Some(loc),
             tags: Vec::default(),
             weather: None,
+            ..Default::default()
         };
         let metadata = MetadataEntryType::new(&entry, &profiles);
 
@@ -1151,6 +1204,7 @@ mod tests {
             country: Some("Country".to_string()),
             administrative_area: Some("AdminArea".to_string()),
             time_zone_name: Some("UTC".to_string()),
+            ..Default::default()
         };
         let entry = DayOneExportEntry {
             text: "# HP5 Plus @ 1600 - 35mm (Canon P)".to_string(),
@@ -1158,6 +1212,7 @@ mod tests {
             tags: Vec::new(),
             location: Some(loc),
             weather: None,
+            ..Default::default()
         };
         let leader = LeaderEntry::new(&entry);
 
