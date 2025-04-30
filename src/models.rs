@@ -648,7 +648,7 @@ impl<'a> Roll<'a> {
         Self {
             camera,
             emulsion,
-            entries: entries.clone(),
+            entries,
         }
     }
 
