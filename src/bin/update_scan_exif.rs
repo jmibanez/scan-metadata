@@ -180,6 +180,18 @@ mod tests {
         TestExifProcessor {}
     }
 
+    #[ctor::ctor]
+    fn init_logger_for_test() {
+        use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
+
+        TermLogger::init(
+            LevelFilter::Debug,
+            Config::default(),
+            TerminalMode::Stderr,
+            ColorChoice::Auto,
+        );
+    }
+
     #[test]
     fn should_match_base_case_filenames() {
         let metadata = FrameEntry::fake(
