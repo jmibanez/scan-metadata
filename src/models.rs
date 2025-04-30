@@ -4,7 +4,7 @@ use log::{debug, warn};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use zip::ZipArchive;
+use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 use std::{
     fs::File,
@@ -157,6 +157,14 @@ pub struct FrameEntry {
     exif_tags: Vec<ExifTag>,
 }
 
+#[derive(Debug)]
+pub struct Roll<'a> {
+    // id: String,
+    camera: String,
+    emulsion: String,
+    entries: Vec<&'a MetadataEntryType>,
+}
+
 fn parse_frame_count(text: &str) -> String {
     let candidate: String = text
         .lines()
@@ -223,6 +231,13 @@ impl MetadataEntryType {
             Self::Frame(frame) => &frame.entry,
         }
     }
+
+    pub fn push_tag(&mut self, tag: String) {
+        match self {
+            Self::Leader(leader) => &leader.entry.tags.push(tag),
+            Self::Frame(frame) => &frame.entry.tags.push(tag),
+        };
+    }
 }
 
 impl MetadataEntry {
@@ -250,28 +265,12 @@ impl MetadataEntry {
         entry
     }
 
-    fn new_from_raw(
-        text: String,
-        entry_date: DateTime<FixedOffset>,
-        mut tags: Vec<String>,
-        location: Option<DayOneLocation>,
-        maybe_weather_info: Option<DayOneWeather>,
-    ) -> Self {
-        let text = text.replace('\\', "");
-        tags.sort();
-
-        let mut entry = MetadataEntry {
-            entry: DayOneExportEntry::default(),
+    fn fake(text: String, entry_date: DateTime<FixedOffset>) -> Self {
+        Self {
             text,
             entry_date,
-            location,
-            tags,
-        };
-        if let Some(weather_info) = maybe_weather_info {
-            entry.populate_weather_info_tags(&weather_info);
+            ..Default::default()
         }
-
-        entry
     }
 
     pub fn camera_tag(&self) -> Option<&String> {
@@ -339,6 +338,14 @@ impl MetadataEntry {
 }
 
 impl LeaderEntry {
+    pub fn fake(text: String, entry_date: DateTime<FixedOffset>, emulsion_name: String) -> Self {
+        let entry = MetadataEntry::fake(text, entry_date);
+        LeaderEntry {
+            entry,
+            emulsion_name,
+        }
+    }
+
     fn new(entry: &DayOneExportEntry) -> Self {
         let entry = MetadataEntry::new(entry);
         let emulsion_name = LeaderEntry::extract_emulsion_name_from_leader_text(&entry.text);
@@ -374,7 +381,7 @@ fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
 
 impl FrameEntry {
     pub fn fake(frame_count: String, text: String, entry_date: DateTime<FixedOffset>) -> Self {
-        let entry = MetadataEntry::new_from_raw(text, entry_date, Vec::new(), None, None);
+        let entry = MetadataEntry::fake(text, entry_date);
         FrameEntry {
             entry,
             frame_count,
@@ -633,6 +640,73 @@ impl FrameEntry {
                 .with_timezone(&local_tz)
                 .format(Self::EXIF_DATE_FORMAT)
         )
+    }
+}
+
+impl<'a> Roll<'a> {
+    pub fn new(camera: String, emulsion: String, entries: Vec<&'a MetadataEntryType>) -> Self {
+        Self {
+            camera,
+            emulsion,
+            entries: entries.clone(),
+        }
+    }
+
+    pub fn entries(&self) -> &Vec<&'a MetadataEntryType> {
+        &self.entries
+    }
+
+    fn to_dayone_export(&self) -> DayOneExport {
+        DayOneExport {
+            metadata: DayOneExportMetadata {
+                version: "1.0".to_string(),
+            },
+            entries: self
+                .entries
+                .iter()
+                .map(|e| e.entry().entry.clone())
+                .collect(),
+        }
+    }
+
+    // emulsion_camera_idx
+    fn cons_filename(&self, idx: usize) -> String {
+        let emulsion = self
+            .emulsion
+            .replace(' ', "_")
+            .replace('@', "-")
+            .to_lowercase();
+        let camera = self.camera.replace("camera:", "").to_lowercase();
+
+        format!("{emulsion}_{camera}_{idx}.zip")
+    }
+
+    pub fn serialize_to(
+        &self,
+        idx: usize,
+        output_directory: &Path,
+    ) -> Result<(), MetadataWriteError> {
+        let filename = self.cons_filename(idx);
+        let mut output_filename = output_directory.to_path_buf();
+        output_filename.push(filename);
+
+        debug!(
+            "Serializing to {}: Camera: {}, Emulsion {}, Entries (count) {}",
+            output_filename.display(),
+            self.camera,
+            self.emulsion,
+            self.entries.len()
+        );
+
+        let writer = File::create_new(&output_filename)?;
+        let mut zipfile = ZipWriter::new(writer);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        zipfile.start_file("Journal.json", options)?;
+        let export_root = self.to_dayone_export();
+        serde_json::to_writer_pretty(zipfile, &export_root)?;
+
+        Ok(())
     }
 }
 
@@ -1217,5 +1291,16 @@ mod tests {
         let leader = LeaderEntry::new(&entry);
 
         assert_eq!("HP5 Plus @ 1600".to_owned(), leader.emulsion_name);
+    }
+
+    #[test]
+    fn should_generate_acceptable_filename_from_roll_info() {
+        let roll = Roll {
+            camera: "camera:canonp".to_string(),
+            emulsion: "HP5 Plus @ 1600".to_string(),
+            entries: Vec::default(),
+        };
+
+        assert_eq!("hp5_plus_-_1600_canonp_1.zip", roll.cons_filename(1))
     }
 }

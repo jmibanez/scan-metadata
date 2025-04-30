@@ -1,0 +1,8 @@
+bin.name = "split_rolls"
+args = "-q test-split.zip"
+status = "success"
+fs.sandbox = true
+fs.base = "data"
+
+stdout = '''
+'''

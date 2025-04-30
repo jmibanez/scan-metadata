@@ -1,0 +1,9 @@
+bin.name = "split_rolls"
+args = "test-split.zip"
+status = "success"
+fs.sandbox = true
+fs.base = "data"
+
+stdout = '''
+Split into 2 separate metadata roll(s), scanned 82 entries
+'''
