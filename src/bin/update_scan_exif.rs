@@ -19,6 +19,7 @@ use scan_metadata::models::{
 };
 use scan_metadata::util;
 
+/// Tool for updating film scans with metadata in Day One entries.
 #[derive(Parser)]
 struct Args {
     /// Quiet; minimize output to errors

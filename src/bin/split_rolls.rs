@@ -16,6 +16,7 @@ use scan_metadata::models::{
 };
 use scan_metadata::{cli_message, util};
 
+/// Split a Day One export ZIP into separate ZIP files, one per roll of film recorded.
 #[derive(Parser)]
 struct Args {
     /// Quiet; minimize output to errors
@@ -136,7 +137,7 @@ fn split_metadata_entries_into_rolls(
                         output_directory.display()
                     );
                 }
-            };
+            }
             process_count += 1;
         }
     }

@@ -8,6 +8,8 @@ Utilities included:
 
 ```
 $ update_scan_exif --help
+Tool for updating film scans with metadata in Day One entries
+
 Usage: update_scan_exif [OPTIONS] <DAYONE_EXPORT_ZIP> <FILELIST>...
 
 Arguments:
@@ -28,6 +30,8 @@ Options:
 
 ```
 $ split_rolls --help
+Split a Day One export ZIP into separate ZIP files, one per roll of film recorded
+
 Usage: split_rolls [OPTIONS] <DAYONE_EXPORT_ZIP>
 
 Arguments:
