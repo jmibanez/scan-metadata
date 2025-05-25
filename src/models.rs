@@ -7,7 +7,7 @@ use thiserror::Error;
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 use std::{
-    fs::File,
+    fs::{File, remove_file},
     path::{Path, PathBuf},
 };
 
