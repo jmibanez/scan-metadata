@@ -35,6 +35,10 @@ struct Args {
     #[arg(short, long)]
     output_directory: Option<PathBuf>,
 
+    /// If split files exist, overwrite them
+    #[arg(long)]
+    overwrite: bool,
+
     /// The path to the exported metadata, as a ZIP file
     dayone_export_zip: PathBuf,
 }
@@ -100,6 +104,7 @@ fn group_entries_by_camera(
 fn split_metadata_entries_into_rolls(
     metadata_entries: &[MetadataEntryType],
     output_directory: &Path,
+    overwrite: bool,
 ) -> (usize, usize) {
     let total_count = metadata_entries.len();
     let mut process_count = 0;
@@ -129,7 +134,7 @@ fn split_metadata_entries_into_rolls(
                 "Camera {camera}: Writing roll {i} to {}",
                 output_directory.display()
             );
-            match roll.serialize_to(i, output_directory) {
+            match roll.serialize_to(i, output_directory, overwrite) {
                 Ok(()) => (),
                 Err(e) => {
                     error!(
@@ -184,7 +189,7 @@ fn split_rolls() -> Result<(), ProgramError> {
         fallback_dir
     };
     let (process_count, entry_count) =
-        split_metadata_entries_into_rolls(&metadata_entries, &output_directory);
+        split_metadata_entries_into_rolls(&metadata_entries, &output_directory, args.overwrite);
 
     cli_message!(
         "Split into {} separate metadata roll(s), scanned {} entries",
@@ -424,7 +429,7 @@ mod tests {
         assert_eq!(6, entries.len());
 
         let (process_count, total_count) =
-            split_metadata_entries_into_rolls(&entries, temp_outputdir.path());
+            split_metadata_entries_into_rolls(&entries, temp_outputdir.path(), false);
         assert_eq!(2, process_count);
         assert_eq!(6, total_count);
 
@@ -500,7 +505,7 @@ mod tests {
         assert_eq!(6, entries.len());
 
         let (process_count, total_count) =
-            split_metadata_entries_into_rolls(&entries, temp_outputdir.path());
+            split_metadata_entries_into_rolls(&entries, temp_outputdir.path(), false);
         assert_eq!(1, process_count);
         assert_eq!(6, total_count);
 

@@ -46,6 +46,8 @@ Options:
           Use YAML with camera and lens profiles
   -o, --output-directory <OUTPUT_DIRECTORY>
           Directory to output per-roll ZIPs to (default, same directory as source export)
+      --overwrite
+          If split files exist, overwrite them
   -h, --help
           Print help
 

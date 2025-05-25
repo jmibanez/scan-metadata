@@ -685,6 +685,7 @@ impl<'a> Roll<'a> {
         &self,
         idx: usize,
         output_directory: &Path,
+        overwrite: bool,
     ) -> Result<(), MetadataWriteError> {
         let filename = self.cons_filename(idx);
         let mut output_filename = output_directory.to_path_buf();
@@ -697,6 +698,11 @@ impl<'a> Roll<'a> {
             self.emulsion,
             self.entries.len()
         );
+
+        if output_filename.exists() && overwrite {
+            debug!("Removing existing file: {}", output_filename.display());
+            remove_file(&output_filename)?;
+        }
 
         let writer = File::create_new(&output_filename)?;
         let mut zipfile = ZipWriter::new(writer);
