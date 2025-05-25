@@ -2,7 +2,7 @@ use clap::Parser;
 use log::{LevelFilter, error, warn};
 use regex::Regex;
 use rexiv2::LogLevel;
-use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
+use simplelog::{ColorChoice, ConfigBuilder, TermLogger, TerminalMode};
 use thiserror::Error;
 
 use std::collections::HashMap;
@@ -119,7 +119,7 @@ fn update_scan_exif() -> Result<(), ProgramError> {
 
     let _ = TermLogger::init(
         level,
-        Config::default(),
+        ConfigBuilder::new().set_time_format_rfc2822().build(),
         TerminalMode::Stderr,
         ColorChoice::Auto,
     );
@@ -183,11 +183,11 @@ mod tests {
 
     #[ctor::ctor]
     fn init_logger_for_test() {
-        use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
+        use simplelog::{ColorChoice, ConfigBuilder, TermLogger, TerminalMode};
 
         TermLogger::init(
             LevelFilter::Debug,
-            Config::default(),
+            ConfigBuilder::new().set_time_format_rfc2822().build(),
             TerminalMode::Stderr,
             ColorChoice::Auto,
         );
