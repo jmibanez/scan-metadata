@@ -25,7 +25,7 @@ serde_yaml = "0.9.34"
 simplelog = "0.12.2"
 thiserror = "2.0.12"
 trycmd = "0.15.9"
-zip = "2.6.0"
+zip = "4.0.0"
 
 [dev-dependencies]
 mockall = "0.13.1"
