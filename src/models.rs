@@ -148,6 +148,7 @@ pub struct MetadataEntry {
 pub struct LeaderEntry {
     entry: MetadataEntry,
     emulsion_name: String,
+    entry_date: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Default)]
@@ -163,6 +164,7 @@ pub struct Roll<'a> {
     camera: String,
     emulsion: String,
     entries: Vec<&'a MetadataEntryType>,
+    start_date: DateTime<FixedOffset>,
 }
 
 fn parse_frame_count(text: &str) -> String {
@@ -343,12 +345,14 @@ impl LeaderEntry {
         LeaderEntry {
             entry,
             emulsion_name,
+            entry_date,
         }
     }
 
     fn new(entry: &DayOneExportEntry) -> Self {
         let entry = MetadataEntry::new(entry);
         let emulsion_name = LeaderEntry::extract_emulsion_name_from_leader_text(&entry.text);
+        let entry_date = entry.entry_date;
         debug!(
             "Frame XX: Leader: Text: {} // Found emulsion: {emulsion_name}",
             &entry.text
@@ -357,6 +361,7 @@ impl LeaderEntry {
         LeaderEntry {
             entry,
             emulsion_name,
+            entry_date,
         }
     }
 
@@ -373,6 +378,11 @@ impl LeaderEntry {
     pub fn emulsion(&self) -> String {
         self.emulsion_name.clone()
     }
+
+    pub fn entry_date(&self) -> DateTime<FixedOffset> {
+        self.entry_date.clone()
+    }
+
 }
 
 fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
@@ -644,11 +654,17 @@ impl FrameEntry {
 }
 
 impl<'a> Roll<'a> {
-    pub fn new(camera: String, emulsion: String, entries: Vec<&'a MetadataEntryType>) -> Self {
+    pub fn new(
+        start_date: DateTime<FixedOffset>,
+        camera: String,
+        emulsion: String,
+        entries: Vec<&'a MetadataEntryType>,
+    ) -> Self {
         Self {
             camera,
             emulsion,
             entries,
+            start_date,
         }
     }
 
@@ -677,8 +693,9 @@ impl<'a> Roll<'a> {
             .replace('@', "-")
             .to_lowercase();
         let camera = self.camera.replace("camera:", "").to_lowercase();
+        let start_date = format!("{}", self.start_date.format("%Y%m%d"));
 
-        format!("{emulsion}_{camera}_{idx}.zip")
+        format!("{emulsion}_{camera}_{start_date}_{idx}.zip")
     }
 
     pub fn serialize_to(
@@ -1305,8 +1322,12 @@ mod tests {
             camera: "camera:canonp".to_string(),
             emulsion: "HP5 Plus @ 1600".to_string(),
             entries: Vec::default(),
+            start_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
         };
 
-        assert_eq!("hp5_plus_-_1600_canonp_1.zip", roll.cons_filename(1))
+        assert_eq!(
+            "hp5_plus_-_1600_canonp_20250102_1.zip",
+            roll.cons_filename(1)
+        )
     }
 }

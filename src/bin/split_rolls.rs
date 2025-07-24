@@ -65,7 +65,13 @@ fn split_metadata_rolls<'a>(metadata_entries: &Vec<&'a MetadataEntryType>) -> Ve
             MetadataEntryType::Leader(leader) => {
                 if !current_roll.is_empty() {
                     let leader = current_leader.unwrap();
-                    let roll = Roll::new(camera.clone(), leader.emulsion(), current_roll.clone());
+                    let start_date = leader.entry_date();
+                    let roll = Roll::new(
+                        start_date,
+                        camera.clone(),
+                        leader.emulsion(),
+                        current_roll.clone(),
+                    );
                     current_roll.clear();
                     rolls.push(roll);
                 }
@@ -81,7 +87,13 @@ fn split_metadata_rolls<'a>(metadata_entries: &Vec<&'a MetadataEntryType>) -> Ve
     // Slurp final group
     if !current_roll.is_empty() {
         let leader = current_leader.unwrap();
-        let roll = Roll::new(camera.clone(), leader.emulsion(), current_roll.clone());
+        let start_date = leader.entry_date();
+        let roll = Roll::new(
+            start_date,
+            camera.clone(),
+            leader.emulsion(),
+            current_roll.clone(),
+        );
         current_roll.clear();
         rolls.push(roll);
     }
@@ -399,7 +411,7 @@ mod tests {
         ];
         let mut camera_2_entries = vec![
             MetadataEntryType::Leader(LeaderEntry::fake(
-                "# HP5 Plus @ 1600 \\- 35mm \\(Canon P\\)".to_string(),
+                "# HP5 Plus @ 1600 \\- 120 \\(YashicaMat\\)".to_string(),
                 DateTime::parse_from_rfc3339("2025-01-02T05:04:56Z").unwrap(),
                 "HP5 Plus @ 1600".to_string(),
             )),
@@ -437,8 +449,8 @@ mod tests {
         let mut canonp_zip_filename = temp_outputdir.path().to_path_buf();
         let mut yashicamat_zip_filename = temp_outputdir.path().to_path_buf();
 
-        canonp_zip_filename.push("hp5_plus_-_1600_canonp_0.zip");
-        yashicamat_zip_filename.push("hp5_plus_-_1600_yashicamat_0.zip");
+        canonp_zip_filename.push("hp5_plus_-_1600_canonp_20250102_0.zip");
+        yashicamat_zip_filename.push("hp5_plus_-_1600_yashicamat_20250102_0.zip");
 
         assert!(canonp_zip_filename.exists());
         assert!(canonp_zip_filename.is_file());
@@ -511,7 +523,7 @@ mod tests {
 
         // Assume expected filenames
         let mut yashicamat_zip_filename = temp_outputdir.path().to_path_buf();
-        yashicamat_zip_filename.push("hp5_plus_-_1600_yashicamat_0.zip");
+        yashicamat_zip_filename.push("hp5_plus_-_1600_yashicamat_20250102_0.zip");
 
         assert!(yashicamat_zip_filename.exists());
         assert!(yashicamat_zip_filename.is_file());
