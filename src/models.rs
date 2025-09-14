@@ -177,6 +177,7 @@ fn parse_frame_count(text: &str) -> String {
         .unwrap();
 
     let candidate_maybe_number = candidate.parse::<u32>();
+
     if candidate_maybe_number.is_ok() {
         candidate
     } else {
@@ -382,7 +383,6 @@ impl LeaderEntry {
     pub fn entry_date(&self) -> DateTime<FixedOffset> {
         self.entry_date.clone()
     }
-
 }
 
 fn calculate_aperture_apex_val(aperture_fstop: f32) -> i8 {
@@ -614,9 +614,13 @@ impl FrameEntry {
     fn munge_date_with_framecount(&self) -> String {
         let frame_count_maybe_number = self.frame_count.parse::<u32>();
         let munged_datetime = if let Ok(frame_count_number) = frame_count_maybe_number {
+            // For the special case of half frame cameras, the frame
+            // count can reach >=60; wrap it so we have a number that
+            // is always within bounds
+            let frame_count_number_as_secs = frame_count_number % 60;
             self.entry
                 .entry_date
-                .with_second(frame_count_number)
+                .with_second(frame_count_number_as_secs)
                 .unwrap()
         } else {
             self.entry.entry_date
@@ -776,6 +780,35 @@ mod tests {
         };
 
         assert_eq!("2025:01:02 03:04:59", metadata.munge_date_with_framecount());
+    }
+
+    #[test]
+    fn should_munge_datetime_from_export_handle_halframe_counts() {
+        let metadata = FrameEntry {
+            entry: MetadataEntry {
+                text: "# 1 // Some raw text\nSome body".to_string(),
+                entry_date: DateTime::parse_from_rfc3339("2025-01-02T03:04:56Z").unwrap(),
+                location: Some(DayOneLocation {
+                    region: Some(DayOneRegion {
+                        center: LongLat {
+                            longitude: -12.34,
+                            latitude: -56.78,
+                        },
+                        radius: 0.0,
+                    }),
+                    country: Some("Country".to_string()),
+                    administrative_area: Some("AdminArea".to_string()),
+                    time_zone_name: Some("UTC".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            frame_count: "63".to_string(),
+            exif_tags: Vec::new(),
+            ..Default::default()
+        };
+
+        assert_eq!("2025:01:02 03:04:03", metadata.munge_date_with_framecount());
     }
 
     #[test]
