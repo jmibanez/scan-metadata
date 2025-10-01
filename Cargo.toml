@@ -30,4 +30,4 @@ zip = "4.3.0"
 [dev-dependencies]
 mockall = "0.13.1"
 mockall_double = "0.3.1"
-tempfile = "3.19.1"
+tempfile = "3.23.0"
