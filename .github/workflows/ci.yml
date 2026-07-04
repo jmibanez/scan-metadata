@@ -12,14 +12,14 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - uses: actions/checkout@v4
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install exiftool exiv2 libgexiv2-2 libgexiv2-dev
+        sudo apt-get install exiftool exiv2/resolute-backports libgexiv2-2/resolute-backports libgexiv2-dev/resolute-backports
     - name: Build
       run: cargo build --verbose
     - name: Run tests

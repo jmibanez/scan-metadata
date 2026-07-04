@@ -355,7 +355,7 @@ impl Rexiv2ExifProcessor {
             match meta.set_gps_info(&GpsInfo {
                 latitude,
                 longitude,
-                altitude: 0.0,
+                altitude: Some(0.0),
             }) {
                 Ok(()) => (),
                 Err(e) => {
@@ -617,7 +617,7 @@ mod tests {
             .with(eq(GpsInfo {
                 longitude: -1.234,
                 latitude: -5.6789,
-                altitude: 0.0,
+                altitude: Some(0.0),
             }));
         mock_meta.expect_set_tag_string().never();
         mock_meta.expect_set_tag_numeric().never();

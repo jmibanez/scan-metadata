@@ -6,6 +6,9 @@ default-run = "update_scan_exif"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[patch.crates-io]
+gexiv2-sys = { git = "https://github.com/jmibanez/gexiv2-sys", rev = "b9c88af675d96b87ea3cd28e8187244d550355cc" }
+
 [dependencies]
 chrono = { version = "0.4.44", features = ["alloc"] }
 chrono-tz = "0.10.4"
@@ -18,7 +21,8 @@ log = "0.4.27"
 num = "0.4.3"
 num-rational = "0.4.2"
 regex = "1.12.3"
-rexiv2 = "0.10.0"
+# Need a patched version of rexiv2 that builds against Gexiv2 0.16
+rexiv2 = { git = "https://github.com/jmibanez/rexiv2", rev = "0aa7e71e0b8d5f3459ad3ddb4831c3331e4c78d5" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 serde_yaml = "0.9.34"
