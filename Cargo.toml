@@ -15,7 +15,7 @@ chrono-tz = "0.10.4"
 clap = { version = "4.5.60", features = ["derive"] }
 directories = "6.0.0"
 either = "1.15.0"
-itertools = "0.14.0"
+itertools = "0.15.0"
 log = "0.4.27"
 num = "0.4.3"
 num-rational = "0.4.2"
