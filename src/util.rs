@@ -5,7 +5,7 @@ use log::LevelFilter;
 use std::sync::RwLock;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_logger_for_test() {
     use simplelog::{ColorChoice, ConfigBuilder, TermLogger, TerminalMode};
 
