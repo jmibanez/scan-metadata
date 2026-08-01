@@ -236,7 +236,7 @@ mod tests {
 
     use super::*;
 
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn init_logger_for_test() {
         use simplelog::{ColorChoice, ConfigBuilder, TermLogger, TerminalMode};
 
